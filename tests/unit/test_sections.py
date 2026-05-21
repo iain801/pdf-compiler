@@ -105,6 +105,45 @@ def test_pdf_section_all_pages(tmp_path: Path, make_pdf):
     assert cs.page_count == 3
 
 
+def test_pdf_section_regularize_normalizes_page_size(tmp_path: Path, make_pdf):
+    """A4-sized input becomes letter-sized output when regularize_pages is on."""
+    a4 = (595.276, 841.890)
+    src = make_pdf(2, "a4.pdf", page_size=a4)
+    ctx = _ctx(tmp_path, defaults=Defaults(regularize_pages=True))
+    s = PdfSection(path=src)
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        sizes = {
+            (round(float(p.MediaBox[2]), 1), round(float(p.MediaBox[3]), 1))
+            for p in pdf.pages
+        }
+    assert sizes == {(612.0, 792.0)}
+
+
+def test_pdf_section_regularize_passthrough_when_already_target(tmp_path: Path, make_pdf):
+    """Pages already at target size are kept as-is (no needless wrapping)."""
+    src = make_pdf(2, "letter.pdf", page_size=(612, 792))
+    ctx = _ctx(tmp_path, defaults=Defaults(regularize_pages=True))
+    s = PdfSection(path=src)
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        # Same page count and MediaBox.
+        assert len(pdf.pages) == 2
+        for p in pdf.pages:
+            assert (float(p.MediaBox[2]), float(p.MediaBox[3])) == (612.0, 792.0)
+
+
+def test_pdf_section_regularize_section_override(tmp_path: Path, make_pdf):
+    """Per-section regularize_pages overrides the default."""
+    src = make_pdf(1, "a4.pdf", page_size=(595.276, 841.890))
+    ctx = _ctx(tmp_path, defaults=Defaults(regularize_pages=False))
+    s = PdfSection(path=src, regularize_pages=True)
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        mb = pdf.pages[0].MediaBox
+        assert (float(mb[2]), float(mb[3])) == (612.0, 792.0)
+
+
 def test_images_section_grid(tmp_path: Path):
     pytest.importorskip("PIL")
     from PIL import Image

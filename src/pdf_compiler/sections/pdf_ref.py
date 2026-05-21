@@ -1,5 +1,5 @@
 """Embed pages from an existing PDF, with optional page-range selection,
-rotation, and outline preservation."""
+rotation, outline preservation, and page-size regularization."""
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -8,6 +8,7 @@ import pikepdf
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
+from pdf_compiler.lengths import page_size_pt
 from pdf_compiler.page_range import parse_page_range
 from pdf_compiler.sections._common import SectionMeta, dest_prefix
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
@@ -28,11 +29,17 @@ class PdfRefImpl:
         src_path = ctx.resolve(self.spec.path)
         dest_name = f"{prefix}-pdf"
 
+        regularize = (
+            self.spec.regularize_pages
+            if self.spec.regularize_pages is not None
+            else defaults.regularize_pages
+        )
+
         key = hash_section(
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
             input_files=(src_path,),
-            extra=f"pdf:{prefix}".encode(),
+            extra=f"pdf:{prefix}:reg={regularize}".encode(),
         )
         cached = ctx.cache.get(key)
 
@@ -43,11 +50,15 @@ class PdfRefImpl:
             if cached is None:
                 out_path = ctx.tmp_pdf("pdfref")
                 dst = pikepdf.Pdf.new()
+                target_wh = page_size_pt(defaults.page_size) if regularize else None
                 for i in indices:
                     page = src.pages[i]
                     if self.spec.rotate:
                         page.rotate(self.spec.rotate, relative=True)
-                    dst.pages.append(page)
+                    if target_wh is None:
+                        dst.pages.append(page)
+                    else:
+                        _append_regularized(dst, page, target_wh)
                 dst.save(out_path)
                 dst.close()
                 out_path = ctx.cache.put(key, out_path)
@@ -107,6 +118,38 @@ def _convert_outline(items, src, local_for_src, prefix, *, counter):
             children=tuple(children),
         ))
     return tuple(out)
+
+
+def _append_regularized(
+    dst: pikepdf.Pdf,
+    src_page: pikepdf.Page,
+    target_wh: tuple[float, float],
+) -> None:
+    """Stamp ``src_page`` onto a fresh target-sized page in ``dst``.
+
+    ``Page.add_overlay`` scales the source page to fit (preserving aspect)
+    inside the given rectangle, so scanned-at-A3 originals end up the same
+    on-screen size as letter-sized scans. Pages already at the target size
+    pass through cheaply (the overlay is a no-op transformation).
+    """
+    tw, th = target_wh
+    sw, sh = _page_size_pt(src_page)
+    if abs(sw - tw) < 0.5 and abs(sh - th) < 0.5:
+        dst.pages.append(src_page)
+        return
+    dst.add_blank_page(page_size=(tw, th))
+    dst.pages[-1].add_overlay(src_page, rect=pikepdf.Rectangle(0, 0, tw, th))
+
+
+def _page_size_pt(page: pikepdf.Page) -> tuple[float, float]:
+    """Return the page's visual size in points, accounting for /Rotate."""
+    mb = page.MediaBox
+    w = float(mb[2]) - float(mb[0])
+    h = float(mb[3]) - float(mb[1])
+    rot = int(page.obj.get("/Rotate", 0)) % 360
+    if rot in (90, 270):
+        w, h = h, w
+    return w, h
 
 
 def _resolve_outline_page(item, src: pikepdf.Pdf) -> int | None:

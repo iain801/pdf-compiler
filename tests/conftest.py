@@ -11,10 +11,14 @@ import pytest
 def make_pdf(tmp_path: Path):
     """Create a minimal multi-page PDF on disk for testing."""
 
-    def _make(n_pages: int, name: str = "test.pdf") -> Path:
+    def _make(
+        n_pages: int,
+        name: str = "test.pdf",
+        page_size: tuple[float, float] = (612, 792),
+    ) -> Path:
         pdf = pikepdf.Pdf.new()
         for _ in range(n_pages):
-            pdf.add_blank_page(page_size=(612, 792))
+            pdf.add_blank_page(page_size=page_size)
         out = tmp_path / name
         pdf.save(out)
         pdf.close()

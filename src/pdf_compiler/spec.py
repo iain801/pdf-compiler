@@ -37,6 +37,9 @@ class Defaults(_Strict):
     page_size: PageSize = "letter"
     margin: str = "0.75in"
     page_numbering: PageNumbering = Field(default_factory=PageNumbering)
+    # If true, embedded PDF pages are scaled & centered into a target-sized
+    # page so scanned/oversized originals match the rest of the document.
+    regularize_pages: bool = False
 
 
 class Metadata(_Strict):
@@ -99,6 +102,8 @@ class PdfSection(_Strict):
     rotate: Literal[0, 90, 180, 270] = 0
     preserve_bookmarks: bool = True
     in_toc: bool = True
+    # Override Defaults.regularize_pages for this section. None = inherit.
+    regularize_pages: bool | None = None
 
 
 class ImageItem(_Strict):
