@@ -8,21 +8,35 @@ import pytest
 
 from pdf_compiler.context import build_context
 from pdf_compiler.sections import impl_for
+from pdf_compiler.sections.title import (
+    _resolve_author,
+    _resolve_date,
+    _resolve_title,
+)
 from pdf_compiler.spec import (
     Defaults,
     HeaderSection,
     ImageItem,
     ImagesSection,
     MarkdownSection,
+    Metadata,
     PdfSection,
     Spec,
     TitleSection,
 )
 
 
-def _ctx(tmp_path: Path, defaults: Defaults | None = None):
+def _ctx(
+    tmp_path: Path,
+    defaults: Defaults | None = None,
+    metadata: Metadata | None = None,
+):
     defaults = defaults or Defaults()
-    spec = Spec(sections=(TitleSection(title="x"),), defaults=defaults)
+    metadata = metadata or Metadata()
+    spec = Spec(
+        sections=(TitleSection(title="x"),),
+        defaults=defaults, metadata=metadata,
+    )
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text("# placeholder")
     return build_context(
@@ -129,3 +143,121 @@ def test_section_caches_output(tmp_path: Path):
     b = impl.compile(ctx)
     # Second compile should return the cached PDF path, not a fresh temp.
     assert a.pdf_path == b.pdf_path
+
+
+# --- title section: metadata fallback + date defaulting --------------------
+
+
+def test_title_inherits_title_from_metadata(tmp_path: Path):
+    ctx = _ctx(tmp_path, metadata=Metadata(title="From Meta"))
+    s = TitleSection(in_toc=True)  # no title on the section
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert any("From Meta" in str(e.label) for e in cs.toc_entries)
+
+
+def test_title_section_overrides_metadata(tmp_path: Path):
+    ctx = _ctx(tmp_path, metadata=Metadata(title="From Meta", author="MA"))
+    s = TitleSection(title="Section Wins", author="SA", in_toc=True)
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert any("Section Wins" in str(e.label) for e in cs.toc_entries)
+    # And resolve helpers directly:
+    assert _resolve_title(s, ctx.metadata) == "Section Wins"
+    assert _resolve_author(s, ctx.metadata) == "SA"
+
+
+def test_title_inherits_author_from_metadata(tmp_path: Path):
+    md = Metadata(title="T", author="From Meta")
+    s = TitleSection()  # both unset on section
+    assert _resolve_author(s, md) == "From Meta"
+
+
+def test_title_author_explicit_none_hides(tmp_path: Path):
+    md = Metadata(title="T", author="From Meta")
+    # author=None *and* explicitly set: section opts out.
+    s = TitleSection(author=None)
+    assert _resolve_author(s, md) is None
+
+
+def test_title_missing_everywhere_errors():
+    md = Metadata()  # no title
+    s = TitleSection()  # no title
+    with pytest.raises(ValueError, match="no title provided"):
+        _resolve_title(s, md)
+
+
+def test_date_defaults_to_today_when_unset_everywhere():
+    import datetime as dt
+    md = Metadata(title="T")  # no date
+    s = TitleSection(title="x")  # no date
+    assert _resolve_date(s, md) == dt.date.today().isoformat()
+
+
+def test_date_inherits_from_metadata():
+    import datetime as dt
+    d = dt.date(2024, 1, 2)
+    md = Metadata(title="T", date=d)
+    s = TitleSection(title="x")
+    assert _resolve_date(s, md) == "2024-01-02"
+
+
+def test_date_section_overrides_metadata():
+    import datetime as dt
+    md = Metadata(title="T", date=dt.date(2024, 1, 2))
+    s = TitleSection(title="x", date=dt.date(2030, 12, 31))
+    assert _resolve_date(s, md) == "2030-12-31"
+
+
+def test_date_none_on_section_disables():
+    import datetime as dt
+    md = Metadata(title="T", date=dt.date(2024, 1, 2))
+    s = TitleSection(title="x", date=None)
+    # Explicit `date: none` on the section disables even if metadata has one.
+    assert _resolve_date(s, md) is None
+
+
+def test_date_none_on_metadata_disables_when_section_unset():
+    md = Metadata(title="T", date=None)  # explicit None
+    s = TitleSection(title="x")           # field not set
+    assert _resolve_date(s, md) is None
+
+
+def test_date_string_value_passes_through():
+    md = Metadata(title="T")
+    s = TitleSection(title="x", date="Spring 2026")
+    assert _resolve_date(s, md) == "Spring 2026"
+
+
+def test_title_section_uses_metadata_via_yaml_loader(tmp_path: Path):
+    """Round-trip through the YAML loader to verify model_fields_set works
+    on validated specs (not just programmatic constructs)."""
+    from pdf_compiler.loader import load_spec
+
+    p = tmp_path / "spec.yaml"
+    p.write_text(
+        "metadata:\n"
+        "  title: From Meta\n"
+        "  author: Meta Author\n"
+        "sections:\n"
+        "  - type: title\n"
+    )
+    spec = load_spec(p)
+    title_spec = spec.sections[0]
+    assert _resolve_title(title_spec, spec.metadata) == "From Meta"
+    assert _resolve_author(title_spec, spec.metadata) == "Meta Author"
+
+
+def test_date_none_via_yaml(tmp_path: Path):
+    """`date: ~` in YAML (null) on a title section disables the date."""
+    from pdf_compiler.loader import load_spec
+
+    p = tmp_path / "spec.yaml"
+    p.write_text(
+        "metadata:\n"
+        "  title: T\n"
+        "sections:\n"
+        "  - type: title\n"
+        "    date: ~\n"  # YAML null
+    )
+    spec = load_spec(p)
+    title_spec = spec.sections[0]
+    assert _resolve_date(title_spec, spec.metadata) is None

@@ -11,13 +11,14 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pdf_compiler.cache import Cache, default_cache_dir
-from pdf_compiler.spec import Defaults, Spec
+from pdf_compiler.spec import Defaults, Metadata, Spec
 
 
 @dataclass(frozen=True, slots=True)
 class BuildContext:
     project_root: Path           # directory of the spec file
     defaults: Defaults
+    metadata: Metadata
     cache: Cache
     tmpdir: Path
     jobs: int
@@ -51,6 +52,7 @@ def build_context(
     return BuildContext(
         project_root=project_root,
         defaults=spec.defaults,
+        metadata=spec.metadata,
         cache=cache,
         tmpdir=tmp,
         jobs=jobs or max(1, (os.cpu_count() or 2) - 1),

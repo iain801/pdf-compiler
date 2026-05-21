@@ -125,13 +125,29 @@ appear in the output in the order they're listed.
 
 ```yaml
 - type: title
-  title:    "Annual Report 2025"
+  title:    "Annual Report 2025"      # optional; falls back to metadata.title
   subtitle: "Fiscal Year Summary"     # optional
-  author:   "Author Name"             # optional
-  date:     2026-05-21                # optional, ISO date or any string
+  author:   "Author Name"             # optional; falls back to metadata.author
+  date:     2026-05-21                # optional; see below
   front_matter: true                  # use roman numerals for this page
   in_toc:   false                     # default: don't list in ToC
 ```
+
+`title`, `author`, and `date` all fall back to the top-level
+`metadata` block when omitted on the section, so a minimal cover can
+be as short as:
+
+```yaml
+metadata:
+  title: "Annual Report 2025"
+  author: "Author Name"
+sections:
+  - type: title
+```
+
+`date` resolves in this order: section wins → else metadata → else
+today's date. Setting `date: ~` (YAML null) at either level
+explicitly disables the date.
 
 #### `toc` — table of contents
 

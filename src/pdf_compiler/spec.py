@@ -44,6 +44,10 @@ class Metadata(_Strict):
     author: str | None = None
     subject: str | None = None
     keywords: tuple[str, ...] = ()
+    # Document date. Title sections fall back to this when their own `date`
+    # is omitted. ``None`` means "no date"; omitting the field entirely
+    # means "use today's date" (distinguished via ``model_fields_set``).
+    date: _dt.date | str | None = None
 
 
 # -- Section types ---------------------------------------------------------- #
@@ -51,9 +55,14 @@ class Metadata(_Strict):
 
 class TitleSection(_Strict):
     type: Literal["title"] = "title"
-    title: str
+    # All three of these fall back to the corresponding field on the
+    # top-level ``metadata`` when omitted here. See sections/title.py.
+    title: str | None = None
     subtitle: str | None = None
     author: str | None = None
+    # ``date`` resolution: section overrides metadata, both honour explicit
+    # ``none`` (YAML null) as "disable", and the ultimate default — when
+    # nothing is set anywhere — is today's date.
     date: _dt.date | str | None = None
     front_matter: bool = True
     # Whether the title appears as a ToC entry (usually no).
