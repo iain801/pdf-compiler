@@ -21,12 +21,12 @@ from pathlib import Path
 import pikepdf
 
 from pdf_compiler.context import BuildContext
+from pdf_compiler.md_ast import make_md
 from pdf_compiler.numbering import format_page_number
 from pdf_compiler.render.html import render_to_pdf
 from pdf_compiler.sections.base import CompiledSection, TocEntry
-from pdf_compiler.spec import TocSection
+from pdf_compiler.spec import HeaderSection, TocSection
 from pdf_compiler.util import slugify
-
 
 # Heuristic for how many ToC entries fit on one page. Tuned for our default
 # CSS: ~36 entries on US letter with 0.75in margins. We over-allocate at
@@ -63,22 +63,9 @@ def render_toc(
     that are within ``spec.depth``.
     """
     defaults = ctx.defaults
-    filtered = [(e, gp) for e, gp in entries if e.depth <= spec.depth]
-    rendered_entries = []
-    for e, gp in filtered:
-        if gp in front_matter_pages:
-            label = format_page_number(gp + 1, defaults.page_numbering.front_matter, front=True)
-        else:
-            # Body pages restart at 1 from the first non-front-matter page.
-            body_idx = gp - max((p for p in front_matter_pages), default=-1)
-            label = format_page_number(body_idx, defaults.page_numbering.body, front=False)
-        rendered_entries.append({
-            "depth": e.depth,
-            "label": e.label,
-            "dest_name": e.dest_name,
-            "page_label": label,
-        })
-
+    rendered_entries = _entries_with_labels(
+        entries, spec.depth, defaults.page_numbering, front_matter_pages,
+    )
     render_to_pdf(
         "toc.html",
         {
@@ -92,6 +79,65 @@ def render_toc(
     )
     with pikepdf.open(out_path) as pdf:
         return len(pdf.pages)
+
+
+def render_subtoc_header(
+    ctx: BuildContext,
+    spec: HeaderSection,
+    entries: list[tuple[TocEntry, int]],
+    *,
+    out_path: Path,
+    front_matter_pages: set[int],
+    dest_name: str,
+) -> int:
+    """Render a header page followed by a mini ToC of its scoped entries."""
+    defaults = ctx.defaults
+    rendered_entries = _entries_with_labels(
+        entries, spec.subtoc_depth, defaults.page_numbering, front_matter_pages,
+    )
+    body_html = make_md().render(spec.body) if spec.body else None
+    render_to_pdf(
+        "header.html",
+        {
+            "title": spec.title,
+            "subtitle": spec.subtitle,
+            "body_html": body_html,
+            "dest_name": dest_name,
+            "subtoc_entries": rendered_entries,
+            "page_size": defaults.page_size,
+            "margin": defaults.margin,
+        },
+        out_path,
+        base_url=ctx.project_root,
+    )
+    with pikepdf.open(out_path) as pdf:
+        return len(pdf.pages)
+
+
+def _entries_with_labels(
+    entries: list[tuple[TocEntry, int]],
+    max_depth: int,
+    page_numbering,
+    front_matter_pages: set[int],
+) -> list[dict]:
+    """Format (entry, global_page) pairs into the dicts the templates consume."""
+    out: list[dict] = []
+    last_fm = max(front_matter_pages, default=-1)
+    for e, gp in entries:
+        if e.depth > max_depth:
+            continue
+        if gp in front_matter_pages:
+            label = format_page_number(gp + 1, page_numbering.front_matter, front=True)
+        else:
+            body_idx = gp - last_fm
+            label = format_page_number(body_idx, page_numbering.body, front=False)
+        out.append({
+            "depth": e.depth,
+            "label": e.label,
+            "dest_name": e.dest_name,
+            "page_label": label,
+        })
+    return out
 
 
 def toc_compiled_section(
@@ -109,4 +155,29 @@ def toc_compiled_section(
         outline=(OutlineNode(title=spec.title, dest_name=dest, local_page=0),),
         front_matter=spec.front_matter,
         destinations={dest: 0},
+    )
+
+
+def subtoc_header_compiled_section(
+    pdf_path: Path,
+    page_count: int,
+    spec: HeaderSection,
+    dest_name: str,
+) -> CompiledSection:
+    """Wrap a deferred-rendered subtoc header into a CompiledSection."""
+    from pdf_compiler.sections.base import OutlineNode
+    toc = (
+        (TocEntry(depth=1, label=spec.title, dest_name=dest_name, local_page=0),)
+        if spec.in_toc else ()
+    )
+    outline = (
+        (OutlineNode(title=spec.title, dest_name=dest_name, local_page=0),)
+        if spec.in_toc else ()
+    )
+    return CompiledSection(
+        pdf_path=pdf_path,
+        page_count=page_count,
+        toc_entries=toc,
+        outline=outline,
+        destinations={dest_name: 0},
     )

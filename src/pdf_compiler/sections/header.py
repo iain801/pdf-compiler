@@ -43,6 +43,7 @@ class HeaderImpl:
                     "subtitle": self.spec.subtitle,
                     "body_html": body_html,
                     "dest_name": dest_name,
+                    "subtoc_entries": None,
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
                 },

@@ -1,7 +1,13 @@
-"""Pipeline implementation: compile → reserve ToC → render ToC → assemble.
+"""Pipeline implementation: compile → reserve deferred → render deferred → assemble.
 
 Kept separate from :mod:`pdf_compiler.pipeline` so the public API surface
 (used by the CLI) stays tiny and unmistakable.
+
+"Deferred" sections are those whose page content depends on the global
+page layout: the main :class:`TocSection` and any :class:`HeaderSection`
+with ``subtoc: true``. They share the same two-pass treatment — compile
+everything else first, reserve N pages each, render against the known
+offsets, replan once if any of them overflows.
 """
 from __future__ import annotations
 
@@ -12,31 +18,34 @@ from pathlib import Path
 from pdf_compiler.assemble import assemble
 from pdf_compiler.context import BuildContext
 from pdf_compiler.sections import impl_for
+from pdf_compiler.sections._common import dest_prefix
 from pdf_compiler.sections.base import CompiledSection, TocEntry
 from pdf_compiler.sections.toc import (
     estimate_toc_pages,
+    render_subtoc_header,
     render_toc,
+    subtoc_header_compiled_section,
     toc_compiled_section,
 )
-from pdf_compiler.spec import Spec, TocSection
+from pdf_compiler.spec import HeaderSection, Spec, TocSection
 
 
 @dataclass(frozen=True, slots=True)
 class LayoutPlan:
-    """Per-section page offsets and reserved ToC sizes for one planning pass."""
+    """Per-section page offsets and reserved deferred sizes for one planning pass."""
 
     offsets: dict[int, int]      # section index -> first page (0-based global)
-    toc_pages: dict[int, int]    # toc-section index -> reserved page count
+    deferred_pages: dict[int, int]  # deferred section index -> reserved page count
     total: int                   # total document page count under this plan
 
 
 def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
     """Run the full pipeline and write the final PDF. Returns total pages."""
     work: list[tuple[int, object]] = []
-    toc_indices: list[int] = []
+    deferred_indices: list[int] = []
     for i, sec in enumerate(spec.sections):
-        if isinstance(sec, TocSection):
-            toc_indices.append(i)
+        if _is_deferred(sec):
+            deferred_indices.append(i)
         else:
             work.append((i, impl_for(sec, i, spec.defaults)))
 
@@ -45,42 +54,101 @@ def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
         else {idx: impl.compile(ctx) for idx, impl in work}
     )
 
-    plan = _plan_layout(spec, compiled_map, toc_indices)
+    plan = _plan_layout(spec, compiled_map, deferred_indices)
     front_matter_pages = _front_matter_set(spec, plan, compiled_map)
 
-    # First-pass ToC render. If any ToC overflows its reservation we widen
-    # the plan and re-render every ToC against the corrected offsets.
-    toc_compiled: dict[int, CompiledSection] = {}
+    # First-pass deferred render. If any deferred section overflows its
+    # reservation we widen the plan and re-render every deferred against
+    # the corrected offsets.
+    deferred_compiled: dict[int, CompiledSection] = {}
     overflowed = False
-    for toc_idx in toc_indices:
-        toc_pdf, actual_pages = _render_one_toc(
-            ctx, spec, plan, compiled_map, toc_idx, front_matter_pages,
-            suffix=str(toc_idx),
+    for di in deferred_indices:
+        pdf, actual_pages = _render_deferred(
+            ctx, spec, plan, compiled_map, di, front_matter_pages,
+            suffix=str(di),
         )
-        if actual_pages > plan.toc_pages[toc_idx]:
-            plan.toc_pages[toc_idx] = actual_pages
+        if actual_pages > plan.deferred_pages[di]:
+            plan.deferred_pages[di] = actual_pages
             overflowed = True
-        toc_compiled[toc_idx] = toc_compiled_section(
-            toc_pdf, actual_pages, spec.sections[toc_idx],
-        )
+        deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di)
 
     if overflowed:
-        plan = _replan(spec, compiled_map, plan.toc_pages)
+        plan = _replan(spec, compiled_map, plan.deferred_pages)
         front_matter_pages = _front_matter_set(spec, plan, compiled_map)
-        for toc_idx in toc_indices:
-            toc_pdf, actual_pages = _render_one_toc(
-                ctx, spec, plan, compiled_map, toc_idx, front_matter_pages,
-                suffix=f"final-{toc_idx}",
+        for di in deferred_indices:
+            pdf, actual_pages = _render_deferred(
+                ctx, spec, plan, compiled_map, di, front_matter_pages,
+                suffix=f"final-{di}",
             )
-            toc_compiled[toc_idx] = toc_compiled_section(
-                toc_pdf, actual_pages, spec.sections[toc_idx],
-            )
+            deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di)
 
     final_sections = [
-        toc_compiled[i] if i in toc_compiled else compiled_map[i]
+        deferred_compiled[i] if i in deferred_compiled else compiled_map[i]
         for i in range(len(spec.sections))
     ]
-    return assemble(final_sections, output, spec.metadata).page_count
+    return assemble(
+        final_sections, output, spec.metadata,
+        page_numbering=spec.defaults.page_numbering,
+        margin=spec.defaults.margin,
+    ).page_count
+
+
+# -- deferred dispatch ----------------------------------------------------- #
+
+
+def _is_deferred(sec) -> bool:
+    return isinstance(sec, TocSection) or (
+        isinstance(sec, HeaderSection) and sec.subtoc
+    )
+
+
+def _wrap_deferred(
+    sec, pdf_path: Path, page_count: int, idx: int,
+) -> CompiledSection:
+    if isinstance(sec, TocSection):
+        return toc_compiled_section(pdf_path, page_count, sec)
+    assert isinstance(sec, HeaderSection)
+    return subtoc_header_compiled_section(
+        pdf_path, page_count, sec, f"{dest_prefix(idx)}-header",
+    )
+
+
+def _render_deferred(
+    ctx: BuildContext,
+    spec: Spec,
+    plan: LayoutPlan,
+    compiled_map: dict[int, CompiledSection],
+    idx: int,
+    front_matter_pages: set[int],
+    *,
+    suffix: str,
+) -> tuple[Path, int]:
+    sec = spec.sections[idx]
+    if isinstance(sec, TocSection):
+        entries = _entries_in_scope(spec, plan, compiled_map, scope=range(len(spec.sections)))
+        out = ctx.tmp_pdf(f"toc-{suffix}")
+        n = render_toc(ctx, sec, entries, out_path=out, front_matter_pages=front_matter_pages)
+        return out, n
+    assert isinstance(sec, HeaderSection)
+    scope = _subtoc_scope(spec, idx)
+    entries = _entries_in_scope(spec, plan, compiled_map, scope=scope)
+    out = ctx.tmp_pdf(f"header-{suffix}")
+    n = render_subtoc_header(
+        ctx, sec, entries,
+        out_path=out, front_matter_pages=front_matter_pages,
+        dest_name=f"{dest_prefix(idx)}-header",
+    )
+    return out, n
+
+
+def _subtoc_scope(spec: Spec, header_idx: int) -> range:
+    """Indices covered by a subtoc header: from this header to the next header."""
+    end = len(spec.sections)
+    for j in range(header_idx + 1, len(spec.sections)):
+        if isinstance(spec.sections[j], HeaderSection):
+            end = j
+            break
+    return range(header_idx + 1, end)
 
 
 # -- planning -------------------------------------------------------------- #
@@ -89,48 +157,60 @@ def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
 def _plan_layout(
     spec: Spec,
     compiled_map: dict[int, CompiledSection],
-    toc_indices: list[int],
+    deferred_indices: list[int],
 ) -> LayoutPlan:
-    """Initial estimate: ToC sizes derived from entry counts."""
-    toc_pages: dict[int, int] = {}
-    for toc_idx in toc_indices:
-        toc_spec = spec.sections[toc_idx]
-        n_entries = sum(
-            sum(1 for e in cs.toc_entries if e.depth <= toc_spec.depth)
-            for cs in compiled_map.values()
-        )
-        toc_pages[toc_idx] = estimate_toc_pages(n_entries)
-    return _replan(spec, compiled_map, toc_pages)
+    """Initial estimate: deferred-section sizes derived from entry counts."""
+    deferred_pages: dict[int, int] = {}
+    for di in deferred_indices:
+        sec = spec.sections[di]
+        if isinstance(sec, TocSection):
+            n_entries = sum(
+                sum(1 for e in cs.toc_entries if e.depth <= sec.depth)
+                for cs in compiled_map.values()
+            )
+            deferred_pages[di] = estimate_toc_pages(n_entries)
+        else:  # subtoc HeaderSection — one divider page plus the mini ToC
+            assert isinstance(sec, HeaderSection)
+            scope = _subtoc_scope(spec, di)
+            n_entries = sum(
+                sum(1 for e in compiled_map[i].toc_entries if e.depth <= sec.subtoc_depth)
+                for i in scope if i in compiled_map
+            )
+            deferred_pages[di] = 1 + estimate_toc_pages(n_entries)
+    return _replan(spec, compiled_map, deferred_pages)
 
 
 def _replan(
     spec: Spec,
     compiled_map: dict[int, CompiledSection],
-    toc_pages: dict[int, int],
+    deferred_pages: dict[int, int],
 ) -> LayoutPlan:
     offsets: dict[int, int] = {}
     page = 0
     for i in range(len(spec.sections)):
         offsets[i] = page
-        page += toc_pages.get(i) or compiled_map[i].page_count
-    return LayoutPlan(offsets=offsets, toc_pages=dict(toc_pages), total=page)
+        page += deferred_pages.get(i) or compiled_map[i].page_count
+    return LayoutPlan(
+        offsets=offsets, deferred_pages=dict(deferred_pages), total=page,
+    )
 
 
-def _toc_entries_with_pages(
+def _entries_in_scope(
     spec: Spec,
     plan: LayoutPlan,
     compiled_map: dict[int, CompiledSection],
-    toc_spec: TocSection,
+    *,
+    scope,
 ) -> list[tuple[TocEntry, int]]:
+    """Collect (entry, global_page) pairs from compiled sections in ``scope``."""
     out: list[tuple[TocEntry, int]] = []
-    for i, sec in enumerate(spec.sections):
-        if isinstance(sec, TocSection):
-            continue
+    for i in scope:
+        if i not in compiled_map:
+            continue  # skip deferred sections — they don't contribute entries
         cs = compiled_map[i]
         offset = plan.offsets[i]
         for e in cs.toc_entries:
-            if e.depth <= toc_spec.depth:
-                out.append((e, offset + e.local_page))
+            out.append((e, offset + e.local_page))
     return out
 
 
@@ -146,30 +226,10 @@ def _front_matter_set(
         if is_fm is None and i in compiled_map:
             is_fm = compiled_map[i].front_matter
         if is_fm:
-            n_pages = plan.toc_pages.get(i) or compiled_map[i].page_count
+            n_pages = plan.deferred_pages.get(i) or compiled_map[i].page_count
             for p in range(offset, offset + n_pages):
                 fm.add(p)
     return fm
-
-
-def _render_one_toc(
-    ctx: BuildContext,
-    spec: Spec,
-    plan: LayoutPlan,
-    compiled_map: dict[int, CompiledSection],
-    toc_idx: int,
-    front_matter_pages: set[int],
-    *,
-    suffix: str,
-) -> tuple[Path, int]:
-    toc_spec = spec.sections[toc_idx]
-    entries = _toc_entries_with_pages(spec, plan, compiled_map, toc_spec)
-    toc_pdf = ctx.tmp_pdf(f"toc-{suffix}")
-    actual_pages = render_toc(
-        ctx, toc_spec, entries,
-        out_path=toc_pdf, front_matter_pages=front_matter_pages,
-    )
-    return toc_pdf, actual_pages
 
 
 # -- parallel compilation -------------------------------------------------- #

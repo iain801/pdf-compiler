@@ -27,6 +27,9 @@ GalleryLayout = Literal["grid", "autopack"]
 
 
 class PageNumbering(_Strict):
+    # ``enabled`` controls whether numbers are *stamped onto* the rendered
+    # pages. ToC always uses the same numbering scheme for labels regardless.
+    enabled: bool = False
     front_matter: NumberingStyle = "roman"
     body: NumberingStyle = "arabic"
     position: NumberingPosition = "bottom-center"
@@ -85,6 +88,10 @@ class HeaderSection(_Strict):
     subtitle: str | None = None
     body: str | None = None  # optional markdown shown below the title
     in_toc: bool = True
+    # When true, this header is followed by a mini ToC of the entries from
+    # every subsequent section, up to (but not including) the next header.
+    subtoc: bool = False
+    subtoc_depth: int = Field(3, ge=1, le=6)
 
 
 class MarkdownSection(_Strict):

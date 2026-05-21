@@ -20,8 +20,9 @@ class SectionMeta:
     defaults: Defaults
 
 
-def dest_prefix(meta: SectionMeta) -> str:
-    return f"sec-{meta.index:04d}"
+def dest_prefix(meta: SectionMeta | int) -> str:
+    idx = meta if isinstance(meta, int) else meta.index
+    return f"sec-{idx:04d}"
 
 
 def page_count_of(pdf_path: Path | str) -> int:

@@ -12,5 +12,20 @@
     {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
     {% if body_html %}<div class="body">{{ body_html|safe }}</div>{% endif %}
   </div>
+  {% if subtoc_entries %}
+    <div class="page-break"></div>
+    <div class="toc subtoc">
+      <h2>In this section</h2>
+      <ul>
+        {% for entry in subtoc_entries %}
+          <li class="depth-{{ entry.depth }}">
+            <span class="label"><a href="#{{ entry.dest_name }}">{{ entry.label }}</a></span>
+            <span class="dots"></span>
+            <span class="page">{{ entry.page_label }}</span>
+          </li>
+        {% endfor %}
+      </ul>
+    </div>
+  {% endif %}
 </body>
 </html>

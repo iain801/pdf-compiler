@@ -16,8 +16,10 @@ from pathlib import Path
 
 import pikepdf
 
+from pdf_compiler.lengths import parse_length_pt
+from pdf_compiler.numbering import format_page_number
 from pdf_compiler.sections.base import CompiledSection, OutlineNode
-from pdf_compiler.spec import Metadata
+from pdf_compiler.spec import Metadata, PageNumbering
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,6 +35,9 @@ def assemble(
     sections: list[CompiledSection],
     output_path: Path,
     metadata: Metadata,
+    *,
+    page_numbering: PageNumbering | None = None,
+    margin: str | None = None,
 ) -> AssemblyResult:
     if not sections:
         raise ValueError("no sections to assemble")
@@ -41,6 +46,7 @@ def assemble(
     global_dests: dict[str, int] = {}
     toc_dests: dict[str, int] = {}
     outline_nodes: list[OutlineNode] = []
+    front_matter_pages: set[int] = set()
     page_offset = 0
 
     for sec in sections:
@@ -59,11 +65,16 @@ def assemble(
             toc_dests[entry.dest_name] = page_offset + entry.local_page
         for node in sec.outline:
             outline_nodes.append(_shift_outline(node, page_offset))
+        if sec.front_matter:
+            front_matter_pages.update(range(page_offset, page_offset + sec.page_count))
         page_offset += sec.page_count
 
     _install_named_destinations(combined, global_dests)
     _install_outline(combined, outline_nodes)
     _install_metadata(combined, metadata)
+    if page_numbering is not None and page_numbering.enabled:
+        margin_pt = parse_length_pt(margin) if margin else 54.0
+        _stamp_page_numbers(combined, page_numbering, front_matter_pages, margin_pt)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.save(output_path, linearize=False)
@@ -130,6 +141,97 @@ def _to_outline_item(node: OutlineNode) -> pikepdf.OutlineItem:
     for child in node.children:
         item.children.append(_to_outline_item(child))
     return item
+
+
+_STAMP_FONT_KEY = "/PdfcPgNum"
+_STAMP_FONT_SIZE = 10.0
+# Average Helvetica glyph width as a fraction of font size — good enough for
+# bottom-corner alignment of a 1–4 character page label.
+_HELV_AVG_WIDTH_EM = 0.55
+
+
+def _stamp_page_numbers(
+    pdf: pikepdf.Pdf,
+    config: PageNumbering,
+    front_matter_pages: set[int],
+    margin_pt: float,
+) -> None:
+    """Append a page-number text op to every page's content stream.
+
+    A single Helvetica font resource (standard 14, no embedding) is shared
+    across all pages by indirect reference, so the per-page overhead is one
+    small content-stream object.
+    """
+    font_obj = pdf.make_indirect(pikepdf.Dictionary(
+        Type=pikepdf.Name.Font,
+        Subtype=pikepdf.Name.Type1,
+        BaseFont=pikepdf.Name("/Helvetica"),
+    ))
+    fm_counter = 0
+    body_counter = 0
+    for i, page in enumerate(pdf.pages):
+        if i in front_matter_pages:
+            fm_counter += 1
+            label = format_page_number(fm_counter, config.front_matter, front=True)
+        else:
+            body_counter += 1
+            label = format_page_number(body_counter, config.body, front=False)
+        if not label:
+            continue
+        _stamp_page(page, label, font_obj, config.position, margin_pt)
+
+
+def _stamp_page(
+    page: pikepdf.Page,
+    text: str,
+    font_obj,
+    position: str,
+    margin_pt: float,
+) -> None:
+    mb = page.MediaBox
+    w = float(mb[2]) - float(mb[0])
+    h = float(mb[3]) - float(mb[1])
+    est_w = len(text) * _STAMP_FONT_SIZE * _HELV_AVG_WIDTH_EM
+    # Position number ~halfway into the margin so it sits clear of content.
+    edge = min(margin_pt * 0.45, 30.0)
+
+    vert, horiz = position.split("-")
+    y = edge if vert == "bottom" else h - edge - _STAMP_FONT_SIZE
+    if horiz == "left":
+        x = margin_pt
+    elif horiz == "right":
+        x = w - margin_pt - est_w
+    else:
+        x = (w - est_w) / 2
+
+    resources = page.obj.get("/Resources")
+    if resources is None:
+        resources = pikepdf.Dictionary()
+        page.obj["/Resources"] = resources
+    fonts = resources.get("/Font")
+    if fonts is None:
+        fonts = pikepdf.Dictionary()
+        resources["/Font"] = fonts
+    fonts[_STAMP_FONT_KEY] = font_obj
+
+    # The existing content stream may have an unbalanced CTM (WeasyPrint
+    # emits ``1 0 0 -1 0 H cm`` to use top-left HTML coordinates). Wrap
+    # everything in q/Q so our stamp runs in PDF default user space.
+    page.contents_add(b"q\n", prepend=True)
+    stream = (
+        f"Q q BT {_STAMP_FONT_KEY} {_STAMP_FONT_SIZE:g} Tf "
+        f"0.25 0.25 0.25 rg {x:.2f} {y:.2f} Td "
+        f"{_pdf_string(text)} Tj ET Q\n"
+    ).encode("latin-1")
+    page.contents_add(stream, prepend=False)
+
+
+def _pdf_string(s: str) -> str:
+    return "(" + s.translate({
+        ord("\\"): "\\\\",
+        ord("("): "\\(",
+        ord(")"): "\\)",
+    }) + ")"
 
 
 def _install_metadata(pdf: pikepdf.Pdf, metadata: Metadata) -> None:

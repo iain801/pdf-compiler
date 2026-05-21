@@ -7,7 +7,7 @@ import pytest
 
 from pdf_compiler.assemble import AssemblyError, assemble
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
-from pdf_compiler.spec import Metadata
+from pdf_compiler.spec import Metadata, PageNumbering
 
 
 def _section(pdf_path: Path, n: int, **kw) -> CompiledSection:
@@ -100,6 +100,60 @@ def test_metadata_written(tmp_path, make_pdf):
 def test_empty_sections_raises(tmp_path):
     with pytest.raises(ValueError, match="no sections"):
         assemble([], tmp_path / "out.pdf", Metadata())
+
+
+def test_page_numbers_stamped_when_enabled(tmp_path, make_pdf):
+    """With ``enabled=True`` each page gets a stamped page-number label."""
+    import pdfplumber
+
+    front = _section(make_pdf(2, "fm.pdf"), 2, front_matter=True)
+    body = _section(make_pdf(3, "body.pdf"), 3)
+    out = tmp_path / "out.pdf"
+    assemble(
+        [front, body], out, Metadata(),
+        page_numbering=PageNumbering(enabled=True),
+        margin="0.5in",
+    )
+    with pdfplumber.open(out) as pdf:
+        labels = []
+        for page in pdf.pages:
+            words = [w["text"] for w in page.extract_words()
+                     if w["top"] > page.height - 50]
+            labels.append(words[-1] if words else "")
+    # Front-matter pages get roman; body pages restart at arabic 1.
+    assert labels == ["i", "ii", "1", "2", "3"]
+
+
+def test_page_numbers_default_off(tmp_path, make_pdf):
+    """Nothing is stamped when the config is left at its default."""
+    import pdfplumber
+
+    sec = _section(make_pdf(2, "x.pdf"), 2)
+    out = tmp_path / "out.pdf"
+    assemble([sec], out, Metadata())  # no page_numbering arg
+    with pdfplumber.open(out) as pdf:
+        text = "".join((p.extract_text() or "") for p in pdf.pages)
+    assert text.strip() == ""
+
+
+def test_page_numbers_position_right(tmp_path, make_pdf):
+    """``position`` controls horizontal alignment of the label."""
+    import pdfplumber
+
+    sec = _section(make_pdf(1, "x.pdf"), 1)
+    out = tmp_path / "out.pdf"
+    assemble(
+        [sec], out, Metadata(),
+        page_numbering=PageNumbering(enabled=True, position="bottom-right"),
+        margin="0.5in",
+    )
+    with pdfplumber.open(out) as pdf:
+        page = pdf.pages[0]
+        words = [w for w in page.extract_words()
+                 if w["top"] > page.height - 50]
+        assert words, "expected a page-number stamp"
+        # Right-aligned: word's x sits past the page midline.
+        assert words[-1]["x0"] > page.width / 2
 
 
 def test_toc_destinations_tracked(tmp_path, make_pdf):
