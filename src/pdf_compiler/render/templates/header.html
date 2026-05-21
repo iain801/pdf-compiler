@@ -1,0 +1,16 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>{{ base_css|safe }}</style>
+  <style>:root { --page-size: {{ page_size }}; --margin: {{ margin }}; }</style>
+</head>
+<body>
+  <div class="header-page">
+    <h1 id="{{ dest_name }}">{{ title }}</h1>
+    {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+    {% if body_html %}<div class="body">{{ body_html|safe }}</div>{% endif %}
+  </div>
+</body>
+</html>

@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or 'Section' }}</title>
+  <style>{{ base_css|safe }}</style>
+  <style>:root { --page-size: {{ page_size }}; --margin: {{ margin }}; }</style>
+</head>
+<body>
+  {{ body_html|safe }}
+</body>
+</html>

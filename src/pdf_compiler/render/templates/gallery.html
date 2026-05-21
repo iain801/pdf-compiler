@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title or 'Gallery' }}</title>
+  <style>{{ base_css|safe }}</style>
+  <style>:root { --page-size: {{ page_size }}; --margin: {{ margin }}; }</style>
+  <style>{{ gallery_css|safe }}</style>
+</head>
+<body>
+  {% if title %}<h1 id="{{ dest_name }}">{{ title }}</h1>{% endif %}
+  {% for page in pages %}
+    <div class="gallery captions-{{ captions }}"
+         style="grid-template-columns: repeat({{ page.cols }}, 1fr);
+                grid-template-rows: repeat({{ page.rows }}, 1fr);">
+      {% for cell in page.cells %}
+        <div class="cell">
+          <img src="{{ cell.path_url }}" alt="">
+          {% if cell.caption and captions != 'none' %}
+            <div class="caption">{{ cell.caption }}</div>
+          {% endif %}
+        </div>
+      {% endfor %}
+    </div>
+    {% if not loop.last %}<div class="page-break"></div>{% endif %}
+  {% endfor %}
+</body>
+</html>

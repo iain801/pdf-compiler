@@ -1,0 +1,17 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>{{ title }}</title>
+  <style>{{ base_css|safe }}</style>
+  <style>:root { --page-size: {{ page_size }}; --margin: {{ margin }}; }</style>
+</head>
+<body>
+  <div class="title-page">
+    <h1>{{ title }}</h1>
+    {% if subtitle %}<div class="subtitle">{{ subtitle }}</div>{% endif %}
+    {% if author %}<div class="author">{{ author }}</div>{% endif %}
+    {% if date %}<div class="date">{{ date }}</div>{% endif %}
+  </div>
+</body>
+</html>
