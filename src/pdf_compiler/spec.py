@@ -1,0 +1,139 @@
+"""Typed YAML spec models — pydantic v2 discriminated union over section types.
+
+The :class:`Spec` is the root model. Sections are tagged by their ``type`` field;
+pydantic dispatches to the correct subclass automatically.
+"""
+from __future__ import annotations
+
+import datetime as _dt
+from pathlib import Path
+from typing import Annotated, Literal, Union
+
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+
+class _Strict(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+PageSize = Literal["letter", "legal", "a4", "a5", "tabloid"]
+NumberingStyle = Literal["arabic", "roman", "none"]
+NumberingPosition = Literal[
+    "bottom-center", "bottom-left", "bottom-right",
+    "top-center", "top-left", "top-right",
+]
+CaptionPlacement = Literal["below", "above", "overlay", "none"]
+GalleryLayout = Literal["grid", "autopack"]
+
+
+class PageNumbering(_Strict):
+    front_matter: NumberingStyle = "roman"
+    body: NumberingStyle = "arabic"
+    position: NumberingPosition = "bottom-center"
+
+
+class Defaults(_Strict):
+    index_headers: bool = True
+    page_size: PageSize = "letter"
+    margin: str = "0.75in"
+    page_numbering: PageNumbering = Field(default_factory=PageNumbering)
+
+
+class Metadata(_Strict):
+    title: str | None = None
+    author: str | None = None
+    subject: str | None = None
+    keywords: tuple[str, ...] = ()
+
+
+# -- Section types ---------------------------------------------------------- #
+
+
+class TitleSection(_Strict):
+    type: Literal["title"] = "title"
+    title: str
+    subtitle: str | None = None
+    author: str | None = None
+    date: _dt.date | str | None = None
+    front_matter: bool = True
+    # Whether the title appears as a ToC entry (usually no).
+    in_toc: bool = False
+
+
+class TocSection(_Strict):
+    type: Literal["toc"] = "toc"
+    title: str = "Table of Contents"
+    depth: int = Field(3, ge=1, le=6)
+    front_matter: bool = True
+
+
+class HeaderSection(_Strict):
+    type: Literal["header"] = "header"
+    title: str
+    subtitle: str | None = None
+    body: str | None = None  # optional markdown shown below the title
+    in_toc: bool = True
+
+
+class MarkdownSection(_Strict):
+    type: Literal["markdown"] = "markdown"
+    path: Path
+    title: str | None = None  # else taken from first H1
+    index_headers: bool | None = None  # None → inherit from defaults
+
+
+class PdfSection(_Strict):
+    type: Literal["pdf"] = "pdf"
+    path: Path
+    pages: str | None = None  # e.g. "1-10,15,20-"; None = all
+    title: str | None = None
+    rotate: Literal[0, 90, 180, 270] = 0
+    preserve_bookmarks: bool = True
+    in_toc: bool = True
+
+
+class ImageItem(_Strict):
+    path: Path
+    caption: str | None = None
+
+
+class ImagesSection(_Strict):
+    type: Literal["images"] = "images"
+    title: str | None = None
+    per_page: int | None = Field(None, ge=1, le=64)
+    layout: GalleryLayout = "grid"
+    captions: CaptionPlacement = "below"
+    images: tuple[ImageItem, ...]
+    in_toc: bool = True
+
+    @model_validator(mode="after")
+    def _nonempty(self):
+        if not self.images:
+            raise ValueError("images section needs at least one image")
+        return self
+
+
+SectionUnion = Annotated[
+    Union[
+        TitleSection,
+        TocSection,
+        HeaderSection,
+        MarkdownSection,
+        PdfSection,
+        ImagesSection,
+    ],
+    Field(discriminator="type"),
+]
+
+
+class Spec(_Strict):
+    output: Path = Path("out.pdf")
+    metadata: Metadata = Field(default_factory=Metadata)
+    defaults: Defaults = Field(default_factory=Defaults)
+    sections: tuple[SectionUnion, ...]
+
+    @model_validator(mode="after")
+    def _nonempty(self):
+        if not self.sections:
+            raise ValueError("spec needs at least one section")
+        return self
