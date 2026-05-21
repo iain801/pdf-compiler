@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import math
 from dataclasses import dataclass
+from itertools import batched
 from pathlib import Path
 
 from PIL import Image
@@ -67,7 +68,7 @@ def grid_layout(images: list[ImageInfo], per_page: int) -> list[Page]:
     cols = max(1, round(math.sqrt(per_page)))
     rows = math.ceil(per_page / cols)
     pages: list[Page] = []
-    for chunk in _chunked(images, per_page):
+    for chunk in batched(images, per_page):
         cells = tuple(
             Cell(image=img, row=i // cols, col=i % cols)
             for i, img in enumerate(chunk)
@@ -144,6 +145,3 @@ def autopack_layout(
     return pages
 
 
-def _chunked(items, n):
-    for i in range(0, len(items), n):
-        yield items[i : i + n]

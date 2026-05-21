@@ -10,6 +10,7 @@ free.
 """
 from __future__ import annotations
 
+import copy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -79,10 +80,10 @@ class AssemblyError(RuntimeError):
 
 
 def _shift_outline(node: OutlineNode, page_offset: int) -> OutlineNode:
-    return OutlineNode(
-        title=node.title,
-        dest_name=node.dest_name,
-        local_page=node.local_page + page_offset,  # now a *global* index
+    # local_page becomes a *global* index after shifting.
+    return copy.replace(
+        node,
+        local_page=node.local_page + page_offset,
         children=tuple(_shift_outline(c, page_offset) for c in node.children),
     )
 
