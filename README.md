@@ -22,7 +22,7 @@ The console script `pdfc` is installed into the project venv. Run it
 with `uv run pdfc ...` or activate the venv with `source .venv/bin/activate`
 and call `pdfc` directly.
 
-Requires Python ≥ 3.11. WeasyPrint pulls in cairo/pango — on macOS
+Requires Python ≥ 3.14. WeasyPrint pulls in cairo/pango — on macOS
 `brew install cairo pango gdk-pixbuf libffi` is the usual prerequisite;
 on Debian/Ubuntu, `apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0`.
 
@@ -104,7 +104,9 @@ defaults:
   index_headers: true        # markdown headings become ToC entries
   page_size: letter          # letter | legal | a4 | a5 | tabloid
   margin: 0.75in
+  regularize_pages: false    # scale embedded PDFs to fit page_size
   page_numbering:
+    enabled: false           # stamp page numbers on each page
     front_matter: roman      # roman | arabic | none
     body: arabic
     position: bottom-center  # bottom-{center,left,right}, top-…
@@ -171,7 +173,14 @@ section list; you can include multiple ToCs (e.g., one per part).
   body: |                            # optional markdown shown below
     Introductory paragraph in **markdown**.
   in_toc: true
+  subtoc: false                      # add a mini-ToC for this part
+  subtoc_depth: 3
 ```
+
+Set `subtoc: true` to follow the divider with a mini table-of-contents
+listing every entry from this header up to the next `header` section
+(or the end of the document). Useful for multi-part documents where
+each part deserves its own overview page.
 
 #### `markdown` — chapter rendered from a `.md` file
 
@@ -194,8 +203,16 @@ nested ToC entry. The heading hierarchy maps to ToC depth.
   title: "Q1 Vendor Report"  # optional; else the file stem
   rotate: 0                  # 0 | 90 | 180 | 270
   preserve_bookmarks: true   # merge included PDF's outline under this entry
+  regularize_pages: null     # null=inherit defaults.regularize_pages; true/false to override
   in_toc: true
 ```
+
+Set `regularize_pages: true` (or enable it on `defaults`) when the
+embedded PDFs come from a mix of sources — letter scans, A4 PDFs, and
+oversized originals. Each source page is scaled & centered onto a
+target-sized blank page so the final document has uniform on-screen
+dimensions. Pages that already match the target are passed through
+untouched.
 
 Page-range syntax:
 
@@ -273,13 +290,33 @@ parse → validate → resolve paths →
   `front_matter: true` produce roman-numeral page labels in the ToC;
   body sections get arabic numerals starting at 1.
 
+- **Global page numbers.** Set `defaults.page_numbering.enabled: true`
+  to stamp the resolved label onto every page during the final
+  assembly step. The stamp uses the same roman/arabic split as the
+  ToC, so a Part II divider page reads "1" while a title page reads
+  "i". A single shared Helvetica resource keeps the per-page overhead
+  to one small content-stream object.
+
+- **Subtoc headers.** A `header` section with `subtoc: true` is
+  rendered *after* the first compile pass, when every other section's
+  page count is known. Its mini-ToC reuses the same name-tree
+  destinations as the main ToC, so entries are clickable without any
+  link rewriting.
+
+- **Page-size regularization.** With `regularize_pages: true` the
+  embedder wraps each source page onto a fresh target-sized page via
+  pikepdf's overlay primitive, scaling & centering to fit while
+  preserving aspect ratio. Pages already at the target size are kept
+  in place (no overhead) — only oversized or undersized inputs pay
+  the wrap cost.
+
 ---
 
 ## Development
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # 103 tests; runs in ~2s
+uv run pytest                 # ~130 tests; runs in ~4s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
 ```
@@ -335,10 +372,85 @@ bodies; `pdfc --help` and `pdfc validate` start in well under 200 ms.
 ## Examples
 
 `examples/report.yaml` exercises every section type (title, ToC,
-two markdown chapters, a header divider, and a 5-image gallery):
+two markdown chapters, a header divider with a subtoc, and a 5-image
+gallery), with stamped page numbers and roman/arabic front-matter
+numbering enabled:
 
 ```bash
 uv run pdfc compile examples/report.yaml
 ```
 
 `examples/minimal.yaml` is the smallest possible spec.
+
+### Real-world: an evidence packet
+
+Bundling dozens of scanned-and-non-scanned PDFs into a single
+navigable document (immigration evidence, legal exhibits, audit
+binders) is what motivated the three "uniform-output" features —
+global page numbers, subtoc parts, and page-size regularization.
+
+```yaml
+output: evidence.pdf
+
+metadata:
+  title: "I-751 Joint Petition Evidence"
+  author: "Petitioner Name"
+
+defaults:
+  page_size: letter
+  regularize_pages: true          # scanned A4/legal pages → letter
+  page_numbering:
+    enabled: true                 # stamp global numbers on every page
+    body: arabic
+    position: bottom-center
+
+sections:
+  - type: title
+    subtitle: "Supporting Documentation"
+
+  - type: toc
+    depth: 2
+
+  - type: header
+    title: "Identity & Status"
+    subtitle: "Petitioner and beneficiary identity documents"
+    subtoc: true
+  - type: pdf
+    path: "[Main Form] I-751.pdf"
+  - type: pdf
+    path: "Green Card.pdf"
+  - type: pdf
+    path: "Iain Passport.pdf"
+
+  - type: header
+    title: "Financial Co-mingling"
+    subtitle: "Joint accounts, tax returns, shared expenses"
+    subtoc: true
+  - type: pdf
+    path: "2025 Tax Return.pdf"
+  - type: pdf
+    path: "Joint Checking Opening.pdf"
+  - type: pdf
+    path: "Apple Card Statements - First Pages.pdf"
+
+  - type: header
+    title: "Joint Residence"
+    subtoc: true
+  - type: pdf
+    path: "6629 Fathom Way Goleta Lease Weissburg Moreno Jun 2024 signed.pdf"
+  - type: pdf
+    path: "PGE Bills - First Pages.pdf"
+
+  - type: images
+    title: "Photographs"
+    layout: autopack
+    captions: below
+    images:
+      - { path: photos/wedding.jpg,    caption: "Wedding, June 2024" }
+      - { path: photos/anniversary.jpg, caption: "Anniversary, June 2025" }
+```
+
+Every embedded PDF — whether the original was 8.5×11", scanned at
+A4, or a phone-photographed image — comes out at uniform letter size.
+Every page bears a sequential arabic page number that matches the
+top-level ToC and the per-section subtoc.

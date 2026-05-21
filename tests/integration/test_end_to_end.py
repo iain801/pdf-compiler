@@ -99,3 +99,33 @@ def test_text_extraction(report_pdf: Path):
     assert "Annual Report" in text
     assert "Introduction" in text
     assert "Q1" in text  # from financials.md
+
+
+def test_subtoc_header_renders_mini_toc(report_pdf: Path):
+    """report.yaml's Part II header has subtoc: true — its page should list
+    the financial headings that follow."""
+    import pdfplumber
+
+    with pdfplumber.open(report_pdf) as pdf:
+        text = "\n".join((p.extract_text() or "") for p in pdf.pages)
+    # The subtoc header introduces this label and lists scoped entries.
+    assert "In this section" in text
+    # Entries from the next markdown section appear with page labels.
+    assert "Financials Overview" in text
+
+
+def test_page_numbers_stamped(report_pdf: Path):
+    """report.yaml has page_numbering.enabled: true — pages should bear
+    roman and arabic stamps as appropriate."""
+    import pdfplumber
+
+    with pdfplumber.open(report_pdf) as pdf:
+        labels = []
+        for page in pdf.pages:
+            words = [w["text"] for w in page.extract_words()
+                     if w["top"] > page.height - 50]
+            labels.append(words[-1] if words else "")
+    # First two pages (title + ToC) are front matter (roman); body restarts at 1.
+    assert labels[0] == "i"
+    assert labels[1] == "ii"
+    assert "1" in labels[2:]

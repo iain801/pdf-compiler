@@ -10,8 +10,10 @@ defaults:
   page_size: letter
   margin: 0.75in
   page_numbering:
+    enabled: true
     front_matter: roman
     body: arabic
+    position: bottom-center
 
 sections:
   - type: title
@@ -29,6 +31,7 @@ sections:
   - type: header
     title: "Part II — Financials"
     subtitle: "A heavily-bookmarked section"
+    subtoc: true
     body: |
       This divider page is generated from markdown.
       The next section is a multi-heading markdown chapter; every heading
