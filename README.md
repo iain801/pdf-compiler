@@ -255,10 +255,10 @@ The pipeline is functional and runs in four phases:
 
 ```
 parse → validate → resolve paths →
-  compile sections (parallel) →
-  reserve ToC pages →
-  render ToC →
-  assemble + metadata + outline → out.pdf
+  compile non-deferred sections (parallel) →
+  reserve pages for ToC + subtoc headers →
+  render deferred sections against resolved offsets →
+  assemble + metadata + outline + page-number stamps → out.pdf
 ```
 
 - **Sections** speak in *named destinations* (`sec-0003-intro-h2-foo`),
@@ -269,13 +269,14 @@ parse → validate → resolve paths →
   markdown body or in the ToC becomes a working PDF link — no link
   rewriting needed.
 
-- **Two-pass ToC, no iteration.** Step 1 compiles every non-ToC
-  section so we know its page count. Step 2 reserves `N` blank pages
-  at each ToC position based on entry count, then renders the ToC
-  with resolved page labels. If the rendered ToC overflows its
-  reservation, the pipeline widens the plan once and re-renders.
-  Named destinations mean page numbers in the ToC always resolve
-  correctly regardless of where the ToC lands.
+- **Two-pass deferred rendering, no iteration.** Step 1 compiles
+  every non-deferred section so we know its page count. Step 2
+  reserves `N` blank pages at each deferred slot (main ToC, plus any
+  header with `subtoc: true`) based on entry count, then renders each
+  deferred section with the resolved page labels. If anything
+  overflows, the pipeline widens the plan once and re-renders.
+  Named destinations mean page numbers in any ToC always resolve
+  correctly regardless of where it lands.
 
 - **Content-addressed cache.** Each section's output is keyed by
   `blake3(spec_section + defaults + input_file_bytes + package_version)`.
@@ -297,12 +298,6 @@ parse → validate → resolve paths →
   "i". A single shared Helvetica resource keeps the per-page overhead
   to one small content-stream object.
 
-- **Subtoc headers.** A `header` section with `subtoc: true` is
-  rendered *after* the first compile pass, when every other section's
-  page count is known. Its mini-ToC reuses the same name-tree
-  destinations as the main ToC, so entries are clickable without any
-  link rewriting.
-
 - **Page-size regularization.** With `regularize_pages: true` the
   embedder wraps each source page onto a fresh target-sized page via
   pikepdf's overlay primitive, scaling & centering to fit while
@@ -316,7 +311,7 @@ parse → validate → resolve paths →
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # ~130 tests; runs in ~4s
+uv run pytest                 # 132 tests; runs in ~4s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
 ```
@@ -332,10 +327,11 @@ src/pdf_compiler/
 ├── pipeline_impl.py        # orchestration (parallel compile + ToC + assemble)
 ├── context.py              # BuildContext (paths, cache, tmpdir, workers)
 ├── cache.py                # blake3 content-addressed section cache
-├── assemble.py             # pikepdf concat + named-destinations + outline
+├── assemble.py             # pikepdf concat + named-destinations + page-number stamps
 ├── md_ast.py               # markdown-it AST → headings + anchor injection
 ├── numbering.py            # roman / arabic page-number formatting
 ├── page_range.py           # "1-10,15,20-" parser
+├── lengths.py              # CSS length parser + page-size table
 ├── validate.py             # standalone input validation
 ├── watcher.py              # watchdog-based --watch
 ├── util.py                 # slugify
@@ -347,7 +343,7 @@ src/pdf_compiler/
 │   ├── markdown_doc.py     #   ↓
 │   ├── pdf_ref.py          #   ↓
 │   ├── images.py           #   ↓
-│   └── toc.py              # two-pass ToC renderer
+│   └── toc.py              # two-pass ToC renderer (also: subtoc headers)
 ├── render/
 │   ├── html.py             # jinja2 + WeasyPrint
 │   └── templates/*.{html,css}
@@ -355,7 +351,7 @@ src/pdf_compiler/
     └── pack.py             # grid + justified-rows image packers
 
 tests/
-├── unit/                   # 95 unit tests, table-driven + hypothesis
+├── unit/                   # ~120 unit tests, table-driven + hypothesis
 ├── integration/            # full-pipeline assertions via pdfplumber
 ├── conftest.py             # shared fixtures (make_pdf, png_bytes)
 └── fixtures/
