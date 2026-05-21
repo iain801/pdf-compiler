@@ -1,0 +1,14 @@
+output: minimal.pdf
+metadata:
+  title: "Minimal Example"
+
+sections:
+  - type: title
+    title: "Minimal Example"
+    subtitle: "Just enough to verify the toolchain works"
+    date: 2026-05-21
+
+  - type: toc
+
+  - type: markdown
+    path: ../examples_content/intro.md
