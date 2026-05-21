@@ -61,7 +61,7 @@ def assemble(
         page_offset += sec.page_count
 
     _install_named_destinations(combined, global_dests)
-    _install_outline(combined, outline_nodes, global_dests)
+    _install_outline(combined, outline_nodes)
     _install_metadata(combined, metadata)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -110,32 +110,24 @@ def _install_named_destinations(pdf: pikepdf.Pdf, dests: dict[str, int]) -> None
     names["/Dests"] = leaf
 
 
-def _install_outline(
-    pdf: pikepdf.Pdf,
-    nodes: list[OutlineNode],
-    dests: dict[str, int],
-) -> None:
+def _install_outline(pdf: pikepdf.Pdf, nodes: list[OutlineNode]) -> None:
     if not nodes:
         return
     with pdf.open_outline() as outline:
         outline.root.clear()
         for n in nodes:
-            outline.root.append(_to_outline_item(pdf, n, dests))
+            outline.root.append(_to_outline_item(n))
 
 
-def _to_outline_item(
-    pdf: pikepdf.Pdf,
-    node: OutlineNode,
-    dests: dict[str, int],
-) -> pikepdf.OutlineItem:
-    # node.local_page is already a global index after _shift_outline.
+def _to_outline_item(node: OutlineNode) -> pikepdf.OutlineItem:
+    # node.local_page has already been shifted to a global index by _shift_outline.
     item = pikepdf.OutlineItem(
         node.title,
         destination=node.local_page,
         page_location=pikepdf.PageLocation.XYZ,
     )
     for child in node.children:
-        item.children.append(_to_outline_item(pdf, child, dests))
+        item.children.append(_to_outline_item(child))
     return item
 
 

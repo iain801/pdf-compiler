@@ -15,6 +15,8 @@ from ruamel.yaml.error import YAMLError
 
 from pdf_compiler.spec import Spec
 
+_YAML = YAML(typ="rt")  # round-trip parser preserves source line numbers
+
 
 class SpecError(ValueError):
     """User-facing error for invalid specs."""
@@ -23,9 +25,8 @@ class SpecError(ValueError):
 def load_spec(path: str | Path) -> Spec:
     path = Path(path)
     text = path.read_text(encoding="utf-8")
-    yaml = YAML(typ="rt")
     try:
-        data = yaml.load(text)
+        data = _YAML.load(text)
     except YAMLError as e:
         raise SpecError(f"{path}: YAML parse error: {e}") from e
     if data is None:

@@ -25,6 +25,7 @@ from pdf_compiler.numbering import format_page_number
 from pdf_compiler.render.html import render_to_pdf
 from pdf_compiler.sections.base import CompiledSection, TocEntry
 from pdf_compiler.spec import TocSection
+from pdf_compiler.util import slugify
 
 
 # Heuristic for how many ToC entries fit on one page. Tuned for our default
@@ -54,7 +55,6 @@ def render_toc(
     entries: list[tuple[TocEntry, int]],
     *,
     out_path: Path,
-    section_index: int,
     front_matter_pages: set[int],
 ) -> int:
     """Render the ToC PDF and return its page count.
@@ -101,7 +101,7 @@ def toc_compiled_section(
 ) -> CompiledSection:
     """Wrap the rendered ToC into a CompiledSection for assembly."""
     from pdf_compiler.sections.base import OutlineNode
-    dest = f"toc-{spec.title.lower().replace(' ', '-')}"
+    dest = f"toc-{slugify(spec.title)}"
     return CompiledSection(
         pdf_path=pdf_path,
         page_count=page_count,

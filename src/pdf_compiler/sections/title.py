@@ -21,7 +21,11 @@ from dataclasses import dataclass
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
 from pdf_compiler.render.html import render_to_pdf
-from pdf_compiler.sections._common import SectionMeta, dest_prefix, page_count_of
+from pdf_compiler.sections._common import (
+    SectionMeta,
+    dest_prefix,
+    simple_compiled_section,
+)
 from pdf_compiler.sections.base import CompiledSection
 from pdf_compiler.spec import Metadata, TitleSection
 
@@ -56,27 +60,28 @@ class TitleImpl:
             extra=extra,
         )
         cached = ctx.cache.get(key)
-        if cached is not None:
-            return _result(cached, dest_name, self.spec.in_toc, resolved_title,
-                            self.spec.front_matter)
-
-        out = ctx.tmp_pdf("title")
-        render_to_pdf(
-            "title.html",
-            {
-                "title": resolved_title,
-                "subtitle": self.spec.subtitle,
-                "author": resolved_author,
-                "date": resolved_date,
-                "page_size": defaults.page_size,
-                "margin": defaults.margin,
-            },
-            out,
-            base_url=ctx.project_root,
+        if cached is None:
+            out = ctx.tmp_pdf("title")
+            render_to_pdf(
+                "title.html",
+                {
+                    "title": resolved_title,
+                    "subtitle": self.spec.subtitle,
+                    "author": resolved_author,
+                    "date": resolved_date,
+                    "page_size": defaults.page_size,
+                    "margin": defaults.margin,
+                },
+                out,
+                base_url=ctx.project_root,
+            )
+            out = ctx.cache.put(key, out)
+        else:
+            out = cached
+        return simple_compiled_section(
+            out, dest_name=dest_name, label=resolved_title,
+            in_toc=self.spec.in_toc, front_matter=self.spec.front_matter,
         )
-        out = ctx.cache.put(key, out)
-        return _result(out, dest_name, self.spec.in_toc, resolved_title,
-                       self.spec.front_matter)
 
 
 # -- field resolution ------------------------------------------------------ #
@@ -119,17 +124,3 @@ def _resolve_date(spec: TitleSection, metadata: Metadata) -> str | None:
     return d.isoformat()
 
 
-# -- result wrapping ------------------------------------------------------- #
-
-
-def _result(pdf, dest_name, in_toc, label, front_matter) -> CompiledSection:
-    from pdf_compiler.sections.base import OutlineNode, TocEntry
-    n = page_count_of(pdf)
-    toc = (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if in_toc else ()
-    outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if in_toc else ()
-    return CompiledSection(
-        pdf_path=pdf, page_count=n,
-        toc_entries=toc, outline=outline,
-        front_matter=front_matter,
-        destinations={dest_name: 0},
-    )

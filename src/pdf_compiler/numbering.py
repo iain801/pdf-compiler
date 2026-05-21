@@ -1,6 +1,7 @@
 """Page-number formatting (roman / arabic / none)."""
 from __future__ import annotations
 
+from pdf_compiler.spec import NumberingStyle
 
 _ROMAN_PAIRS = [
     (1000, "m"), (900, "cm"), (500, "d"), (400, "cd"),
@@ -21,7 +22,7 @@ def to_roman(n: int) -> str:
     return "".join(out)
 
 
-def format_page_number(n: int, style: str, *, front: bool) -> str:
+def format_page_number(n: int, style: NumberingStyle, *, front: bool) -> str:
     """Format a 1-based page number per the given style."""
     if style == "none":
         return ""

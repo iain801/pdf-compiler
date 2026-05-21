@@ -59,13 +59,11 @@ class MarkdownImpl:
             )
             out = ctx.cache.put(key, out)
 
-        # All anchors live on page 0 of *this section* until we know better.
-        # WeasyPrint records true page positions in the PDF itself; ToC links
-        # still work because they're named destinations resolved in the
-        # source PDF. For the ToC *labels* we use page 0 as a fallback so
-        # outline navigation lands on the section's first page — good enough
-        # for v1 (and unambiguous as long as users don't rely on per-heading
-        # page-number labels for inline-rendered markdown).
+        # Heading anchors all label as page 0 of this section; WeasyPrint
+        # stores true per-anchor positions inside the PDF, so click-through
+        # still lands on the right page. The ToC page-number column will
+        # show the section's first page for every heading — accepted trade-off
+        # in v1 to avoid a second WeasyPrint pass to extract anchor offsets.
         toc_entries: list[TocEntry] = [
             TocEntry(depth=1, label=title, dest_name=section_dest, local_page=0),
         ]

@@ -22,7 +22,6 @@ class BuildContext:
     cache: Cache
     tmpdir: Path
     jobs: int
-    spec_hash_extra: bytes = b""
 
     def resolve(self, path: Path) -> Path:
         """Resolve a (possibly relative) path against the project root."""

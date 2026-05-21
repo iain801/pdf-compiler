@@ -7,8 +7,12 @@ from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
 from pdf_compiler.md_ast import make_md
 from pdf_compiler.render.html import render_to_pdf
-from pdf_compiler.sections._common import SectionMeta, dest_prefix, page_count_of
-from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
+from pdf_compiler.sections._common import (
+    SectionMeta,
+    dest_prefix,
+    simple_compiled_section,
+)
+from pdf_compiler.sections.base import CompiledSection
 from pdf_compiler.spec import HeaderSection
 
 
@@ -29,35 +33,25 @@ class HeaderImpl:
             extra=f"header:{prefix}".encode(),
         )
         cached = ctx.cache.get(key)
-        if cached is not None:
-            return _result(cached, dest_name, self.spec)
-
-        body_html = make_md().render(self.spec.body) if self.spec.body else None
-
-        out = ctx.tmp_pdf("header")
-        render_to_pdf(
-            "header.html",
-            {
-                "title": self.spec.title,
-                "subtitle": self.spec.subtitle,
-                "body_html": body_html,
-                "dest_name": dest_name,
-                "page_size": defaults.page_size,
-                "margin": defaults.margin,
-            },
-            out,
-            base_url=ctx.project_root,
+        if cached is None:
+            body_html = make_md().render(self.spec.body) if self.spec.body else None
+            out = ctx.tmp_pdf("header")
+            render_to_pdf(
+                "header.html",
+                {
+                    "title": self.spec.title,
+                    "subtitle": self.spec.subtitle,
+                    "body_html": body_html,
+                    "dest_name": dest_name,
+                    "page_size": defaults.page_size,
+                    "margin": defaults.margin,
+                },
+                out,
+                base_url=ctx.project_root,
+            )
+            out = ctx.cache.put(key, out)
+        else:
+            out = cached
+        return simple_compiled_section(
+            out, dest_name=dest_name, label=self.spec.title, in_toc=self.spec.in_toc,
         )
-        out = ctx.cache.put(key, out)
-        return _result(out, dest_name, self.spec)
-
-
-def _result(pdf, dest_name: str, spec: HeaderSection) -> CompiledSection:
-    n = page_count_of(pdf)
-    toc = (TocEntry(depth=1, label=spec.title, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
-    outline = (OutlineNode(title=spec.title, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
-    return CompiledSection(
-        pdf_path=pdf, page_count=n,
-        toc_entries=toc, outline=outline,
-        destinations={dest_name: 0},
-    )

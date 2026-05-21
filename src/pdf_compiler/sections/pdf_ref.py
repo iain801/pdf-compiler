@@ -13,6 +13,9 @@ from pdf_compiler.sections._common import SectionMeta, dest_prefix
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
 from pdf_compiler.spec import PdfSection
 
+# Exceptions we tolerate when an included PDF's outline is malformed.
+_OUTLINE_OK_EXCEPTIONS = (pikepdf.PdfError, AttributeError, TypeError, IndexError, KeyError)
+
 
 @dataclass(frozen=True, slots=True)
 class PdfRefImpl:
@@ -32,13 +35,13 @@ class PdfRefImpl:
             extra=f"pdf:{prefix}".encode(),
         )
         cached = ctx.cache.get(key)
-        out_path = cached if cached is not None else ctx.tmp_pdf("pdfref")
-        outline_children: tuple[OutlineNode, ...] = ()
 
-        if cached is None:
-            with pikepdf.open(src_path) as src:
-                total = len(src.pages)
-                indices = parse_page_range(self.spec.pages, total)
+        with pikepdf.open(src_path) as src:
+            indices = parse_page_range(self.spec.pages, len(src.pages))
+            local_for_src = {src_idx: local for local, src_idx in enumerate(indices)}
+
+            if cached is None:
+                out_path = ctx.tmp_pdf("pdfref")
                 dst = pikepdf.Pdf.new()
                 for i in indices:
                     page = src.pages[i]
@@ -47,20 +50,16 @@ class PdfRefImpl:
                     dst.pages.append(page)
                 dst.save(out_path)
                 dst.close()
-            out_path = ctx.cache.put(key, out_path)
+                out_path = ctx.cache.put(key, out_path)
+            else:
+                out_path = cached
 
-        # Outline preservation runs from the freshly written PDF so we can
-        # remap source page numbers to our local 0-based indices.
-        if self.spec.preserve_bookmarks:
-            with pikepdf.open(src_path) as src:
-                total = len(src.pages)
-                indices = parse_page_range(self.spec.pages, total)
-                local_for_src = {src_idx: local
-                                  for local, src_idx in enumerate(indices)}
+            outline_children: tuple[OutlineNode, ...] = ()
+            if self.spec.preserve_bookmarks:
                 outline_children = _preserve_outline(src, local_for_src, prefix)
 
         title = self.spec.title or src_path.stem
-        n_pages = len(parse_page_range(self.spec.pages, _count_pages(src_path)))
+        n_pages = len(indices)
         toc = (
             (TocEntry(depth=1, label=title, dest_name=dest_name, local_page=0),)
             if self.spec.in_toc else ()
@@ -77,11 +76,6 @@ class PdfRefImpl:
         )
 
 
-def _count_pages(p) -> int:
-    with pikepdf.open(p) as pdf:
-        return len(pdf.pages)
-
-
 def _preserve_outline(
     src: pikepdf.Pdf,
     local_for_src: dict[int, int],
@@ -91,19 +85,17 @@ def _preserve_outline(
     try:
         with src.open_outline() as ol:
             return _convert_outline(ol.root, src, local_for_src, prefix, counter=[0])
-    except Exception:
-        # Some PDFs have malformed outlines — silently skip rather than abort.
+    except _OUTLINE_OK_EXCEPTIONS:
         return ()
 
 
 def _convert_outline(items, src, local_for_src, prefix, *, counter):
     out: list[OutlineNode] = []
     for item in items:
-        # Resolve the item's destination page index in the source PDF.
         src_page_idx = _resolve_outline_page(item, src)
         children = _convert_outline(item.children, src, local_for_src, prefix, counter=counter)
         if src_page_idx is None or src_page_idx not in local_for_src:
-            # Page was filtered out — keep children if any (hoisted).
+            # Page was filtered out — hoist any children so we don't lose them.
             out.extend(children)
             continue
         counter[0] += 1
@@ -118,19 +110,18 @@ def _convert_outline(items, src, local_for_src, prefix, *, counter):
 
 
 def _resolve_outline_page(item, src: pikepdf.Pdf) -> int | None:
+    """Map a pikepdf OutlineItem to its 0-based source-PDF page index, if any."""
     try:
         dest = item.destination
-        # destination can be int (page number), Array, or None (action-based).
         if isinstance(dest, int):
             return dest
         if dest is None:
             return None
-        # Array form: [page, /XYZ, ...]
-        if hasattr(dest, "__getitem__"):
+        if hasattr(dest, "__getitem__"):  # [page, /XYZ, ...]
             page_obj = dest[0]
             for i, p in enumerate(src.pages):
                 if p.obj.objgen == page_obj.objgen:
                     return i
-    except Exception:
+    except _OUTLINE_OK_EXCEPTIONS:
         return None
     return None
