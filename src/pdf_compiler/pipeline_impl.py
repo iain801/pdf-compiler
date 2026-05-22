@@ -17,6 +17,7 @@ from pathlib import Path
 
 from pdf_compiler.assemble import assemble
 from pdf_compiler.context import BuildContext
+from pdf_compiler.interpolate import interpolate
 from pdf_compiler.sections import impl_for
 from pdf_compiler.sections._common import dest_prefix
 from pdf_compiler.sections.base import CompiledSection, TocEntry
@@ -70,7 +71,7 @@ def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
         if actual_pages > plan.deferred_pages[di]:
             plan.deferred_pages[di] = actual_pages
             overflowed = True
-        deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di)
+        deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di, ctx)
 
     if overflowed:
         plan = _replan(spec, compiled_map, plan.deferred_pages)
@@ -80,17 +81,26 @@ def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
                 ctx, spec, plan, compiled_map, di, front_matter_pages,
                 suffix=f"final-{di}",
             )
-            deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di)
+            deferred_compiled[di] = _wrap_deferred(spec.sections[di], pdf, actual_pages, di, ctx)
 
     final_sections = [
         deferred_compiled[i] if i in deferred_compiled else compiled_map[i]
         for i in range(len(spec.sections))
     ]
     return assemble(
-        final_sections, output, spec.metadata,
+        final_sections, output, _interpolate_metadata(spec.metadata, ctx.vars),
         page_numbering=spec.defaults.page_numbering,
         margin=spec.defaults.margin,
     ).page_count
+
+
+def _interpolate_metadata(md, vars):
+    return md.model_copy(update={
+        "title": interpolate(md.title, vars),
+        "author": interpolate(md.author, vars),
+        "subject": interpolate(md.subject, vars),
+        "keywords": tuple(interpolate(k, vars) for k in md.keywords),
+    })
 
 
 # -- deferred dispatch ----------------------------------------------------- #
@@ -103,13 +113,14 @@ def _is_deferred(sec) -> bool:
 
 
 def _wrap_deferred(
-    sec, pdf_path: Path, page_count: int, idx: int,
+    sec, pdf_path: Path, page_count: int, idx: int, ctx: BuildContext,
 ) -> CompiledSection:
+    title = interpolate(sec.title, ctx.vars)
     if isinstance(sec, TocSection):
-        return toc_compiled_section(pdf_path, page_count, sec)
+        return toc_compiled_section(pdf_path, page_count, sec, title=title)
     assert isinstance(sec, HeaderSection)
     return subtoc_header_compiled_section(
-        pdf_path, page_count, sec, f"{dest_prefix(idx)}-header",
+        pdf_path, page_count, sec, f"{dest_prefix(idx)}-header", title=title,
     )
 
 

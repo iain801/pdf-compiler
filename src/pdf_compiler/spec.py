@@ -151,6 +151,9 @@ class Spec(_Strict):
     output: Path = Path("out.pdf")
     metadata: Metadata = Field(default_factory=Metadata)
     defaults: Defaults = Field(default_factory=Defaults)
+    # User-defined ``{{ name }}`` substitutions. Builtins (today, year, ...)
+    # are always available; entries here override or extend them.
+    vars: dict[str, str | int | float | bool | None] = Field(default_factory=dict)
     sections: tuple[SectionUnion, ...]
 
     @model_validator(mode="after")

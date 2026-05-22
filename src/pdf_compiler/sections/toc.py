@@ -21,6 +21,7 @@ from pathlib import Path
 import pikepdf
 
 from pdf_compiler.context import BuildContext
+from pdf_compiler.interpolate import interpolate
 from pdf_compiler.md_ast import make_md
 from pdf_compiler.numbering import format_page_number
 from pdf_compiler.render.html import render_to_pdf
@@ -69,7 +70,7 @@ def render_toc(
     render_to_pdf(
         "toc.html",
         {
-            "title": spec.title,
+            "title": interpolate(spec.title, ctx.vars),
             "entries": rendered_entries,
             "page_size": defaults.page_size,
             "margin": defaults.margin,
@@ -95,12 +96,13 @@ def render_subtoc_header(
     rendered_entries = _entries_with_labels(
         entries, spec.subtoc_depth, defaults.page_numbering, front_matter_pages,
     )
-    body_html = make_md().render(spec.body) if spec.body else None
+    body = interpolate(spec.body, ctx.vars)
+    body_html = make_md().render(body) if body else None
     render_to_pdf(
         "header.html",
         {
-            "title": spec.title,
-            "subtitle": spec.subtitle,
+            "title": interpolate(spec.title, ctx.vars),
+            "subtitle": interpolate(spec.subtitle, ctx.vars),
             "body_html": body_html,
             "dest_name": dest_name,
             "subtoc_entries": rendered_entries,
@@ -144,15 +146,22 @@ def toc_compiled_section(
     pdf_path: Path,
     page_count: int,
     spec: TocSection,
+    *,
+    title: str | None = None,
 ) -> CompiledSection:
-    """Wrap the rendered ToC into a CompiledSection for assembly."""
+    """Wrap the rendered ToC into a CompiledSection for assembly.
+
+    ``title`` is the interpolated title (vars resolved); defaults to the raw
+    spec title when the caller hasn't substituted variables.
+    """
     from pdf_compiler.sections.base import OutlineNode
-    dest = f"toc-{slugify(spec.title)}"
+    label = title or spec.title
+    dest = f"toc-{slugify(label)}"
     return CompiledSection(
         pdf_path=pdf_path,
         page_count=page_count,
         toc_entries=(),
-        outline=(OutlineNode(title=spec.title, dest_name=dest, local_page=0),),
+        outline=(OutlineNode(title=label, dest_name=dest, local_page=0),),
         front_matter=spec.front_matter,
         destinations={dest: 0},
     )
@@ -163,15 +172,18 @@ def subtoc_header_compiled_section(
     page_count: int,
     spec: HeaderSection,
     dest_name: str,
+    *,
+    title: str | None = None,
 ) -> CompiledSection:
     """Wrap a deferred-rendered subtoc header into a CompiledSection."""
     from pdf_compiler.sections.base import OutlineNode
+    label = title or spec.title
     toc = (
-        (TocEntry(depth=1, label=spec.title, dest_name=dest_name, local_page=0),)
+        (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),)
         if spec.in_toc else ()
     )
     outline = (
-        (OutlineNode(title=spec.title, dest_name=dest_name, local_page=0),)
+        (OutlineNode(title=label, dest_name=dest_name, local_page=0),)
         if spec.in_toc else ()
     )
     return CompiledSection(

@@ -20,6 +20,7 @@ from dataclasses import dataclass
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
+from pdf_compiler.interpolate import interpolate
 from pdf_compiler.render.html import render_to_pdf
 from pdf_compiler.sections._common import (
     SectionMeta,
@@ -40,9 +41,10 @@ class TitleImpl:
         prefix = dest_prefix(self.meta)
         dest_name = f"{prefix}-title"
 
-        resolved_title = _resolve_title(self.spec, ctx.metadata)
-        resolved_author = _resolve_author(self.spec, ctx.metadata)
-        resolved_date = _resolve_date(self.spec, ctx.metadata)
+        resolved_title = interpolate(_resolve_title(self.spec, ctx.metadata), ctx.vars)
+        resolved_subtitle = interpolate(self.spec.subtitle, ctx.vars)
+        resolved_author = interpolate(_resolve_author(self.spec, ctx.metadata), ctx.vars)
+        resolved_date = interpolate(_resolve_date(self.spec, ctx.metadata), ctx.vars)
 
         # Cache key folds in the *resolved* values so identical-looking
         # specs with different metadata produce different outputs, and
@@ -50,6 +52,7 @@ class TitleImpl:
         extra = (
             f"title:{prefix}:"
             f"{resolved_title}:"
+            f"{resolved_subtitle or ''}:"
             f"{resolved_author or ''}:"
             f"{resolved_date or ''}"
         ).encode()
@@ -66,7 +69,7 @@ class TitleImpl:
                 "title.html",
                 {
                     "title": resolved_title,
-                    "subtitle": self.spec.subtitle,
+                    "subtitle": resolved_subtitle,
                     "author": resolved_author,
                     "date": resolved_date,
                     "page_size": defaults.page_size,

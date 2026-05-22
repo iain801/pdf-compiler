@@ -111,6 +111,10 @@ defaults:
     body: arabic
     position: bottom-center  # bottom-{center,left,right}, top-…
 
+vars:                        # see "Variables" below
+  petitioner: "Jane Smith"
+  filing_no:  "I-751"
+
 sections:
   - …                        # see below
 ```
@@ -194,6 +198,9 @@ each part deserves its own overview page.
 When `index_headers` is on, every heading in the markdown becomes a
 nested ToC entry. The heading hierarchy maps to ToC depth.
 
+Markdown rendering uses CommonMark with GFM-style pipe tables,
+strikethrough (`~~gone~~`), and URL autolinking enabled.
+
 #### `pdf` — embed an existing PDF
 
 ```yaml
@@ -246,6 +253,45 @@ Two layout modes:
   page is filled with rows of images that justify to a target height.
   Pages break when vertical space runs out. Layout is non-overlapping
   by construction.
+
+---
+
+## Variables
+
+Any user-facing string — titles, subtitles, captions, image captions,
+markdown content, header bodies, and PDF metadata fields — can
+reference `{{ name }}` placeholders. Names resolve from a merged dict
+of user-defined `vars:` and a set of builtins:
+
+| name         | value                                  |
+|---|---|
+| `today`      | today's date in ISO format (`2026-05-21`) |
+| `year`       | four-digit year (`2026`)               |
+| `month`      | zero-padded month (`05`)               |
+| `day`        | zero-padded day (`21`)                 |
+| `month_name` | full English month name (`May`)        |
+
+User entries in `vars:` override builtins with the same name.
+
+```yaml
+vars:
+  petitioner: "Jane Smith"
+  case_no:    "MSC-2026-0421"
+
+sections:
+  - type: title
+    title:    "Petition by {{petitioner}}"
+    subtitle: "Filed {{today}} — Case {{case_no}}"
+
+  - type: markdown
+    path: cover_letter.md   # may also use {{petitioner}}, {{today}}, …
+```
+
+Unknown names render as the literal source (`{{nothere}}`) — existing
+documents that happen to contain double-brace text are not broken by
+the feature. Values are stringified with `str()`, so YAML ints,
+floats, and bools work as expected. Changing a variable invalidates
+the section cache for any section that interpolated it.
 
 ---
 
@@ -311,7 +357,7 @@ parse → validate → resolve paths →
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # 132 tests; runs in ~4s
+uv run pytest                 # 150 tests; runs in ~4s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
 ```
@@ -332,6 +378,7 @@ src/pdf_compiler/
 ├── numbering.py            # roman / arabic page-number formatting
 ├── page_range.py           # "1-10,15,20-" parser
 ├── lengths.py              # CSS length parser + page-size table
+├── interpolate.py          # {{name}} variable substitution + builtins
 ├── validate.py             # standalone input validation
 ├── watcher.py              # watchdog-based --watch
 ├── util.py                 # slugify
@@ -351,7 +398,7 @@ src/pdf_compiler/
     └── pack.py             # grid + justified-rows image packers
 
 tests/
-├── unit/                   # ~120 unit tests, table-driven + hypothesis
+├── unit/                   # ~135 unit tests, table-driven + hypothesis
 ├── integration/            # full-pipeline assertions via pdfplumber
 ├── conftest.py             # shared fixtures (make_pdf, png_bytes)
 └── fixtures/

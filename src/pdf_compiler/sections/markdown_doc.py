@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
+from pdf_compiler.interpolate import interpolate
 from pdf_compiler.md_ast import Heading, first_h1_text, render_with_headings
 from pdf_compiler.render.html import render_to_pdf
 from pdf_compiler.sections._common import SectionMeta, dest_prefix
@@ -21,11 +22,11 @@ class MarkdownImpl:
         defaults = self.meta.defaults
         prefix = dest_prefix(self.meta)
         md_path = ctx.resolve(self.spec.path)
-        md_text = md_path.read_text(encoding="utf-8")
+        md_text = interpolate(md_path.read_text(encoding="utf-8"), ctx.vars)
 
         # Render markdown → HTML and extract headings (with injected anchors).
         html_body, headings = render_with_headings(md_text, id_prefix=prefix)
-        title = self.spec.title or first_h1_text(headings) or md_path.stem
+        title = interpolate(self.spec.title, ctx.vars) or first_h1_text(headings) or md_path.stem
         # Section-level anchor: point at the top of the section's first page.
         section_dest = f"{prefix}-top"
 
@@ -39,7 +40,7 @@ class MarkdownImpl:
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
             input_files=(md_path,),
-            extra=f"markdown:{prefix}:{index_headers}".encode(),
+            extra=f"markdown:{prefix}:{index_headers}:{ctx.vars_hash}".encode(),
         )
         cached = ctx.cache.get(key)
         out = cached if cached is not None else ctx.tmp_pdf("markdown")

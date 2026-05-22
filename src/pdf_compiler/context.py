@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from pdf_compiler.cache import Cache, default_cache_dir
+from pdf_compiler.interpolate import resolve_vars, vars_hash
 from pdf_compiler.spec import Defaults, Metadata, Spec
 
 
@@ -22,6 +23,11 @@ class BuildContext:
     cache: Cache
     tmpdir: Path
     jobs: int
+    # Resolved ``{{name}}`` substitutions (builtins merged with user vars).
+    vars: dict[str, str] = field(default_factory=dict)
+    # Stable hash of ``vars`` — folded into section cache keys so changing
+    # a variable value invalidates everything that interpolates it.
+    vars_hash: str = ""
 
     def resolve(self, path: Path) -> Path:
         """Resolve a (possibly relative) path against the project root."""
@@ -48,6 +54,7 @@ def build_context(
     cache = Cache(root=cache_dir or default_cache_dir(), enabled=use_cache)
     tmp = tmpdir or Path(tempfile.mkdtemp(prefix="pdfc-"))
     tmp.mkdir(parents=True, exist_ok=True)
+    vars_resolved = resolve_vars(spec.vars)
     return BuildContext(
         project_root=project_root,
         defaults=spec.defaults,
@@ -55,4 +62,6 @@ def build_context(
         cache=cache,
         tmpdir=tmp,
         jobs=jobs or max(1, (os.cpu_count() or 2) - 1),
+        vars=vars_resolved,
+        vars_hash=vars_hash(vars_resolved),
     )

@@ -48,3 +48,24 @@ def test_tree_handles_jump_levels():
     _, hs = render_with_headings("# A\n\n### A.1.1\n", id_prefix="s")
     assert hs[0].text == "A"
     assert hs[0].children[0].text == "A.1.1"
+
+
+def test_gfm_pipe_tables_render():
+    """| header | ... | should produce a <table>, not appear as literal pipes."""
+    md = (
+        "| Dates | Address |\n"
+        "|---|---|\n"
+        "| 2024 | 6629 Fathom Way |\n"
+        "| 2025 | 3380 20th St |\n"
+    )
+    html, _ = render_with_headings(md, id_prefix="s")
+    assert "<table>" in html
+    assert "<th>Dates</th>" in html
+    assert "<td>6629 Fathom Way</td>" in html
+    # And the literal pipe row text must not have leaked into the body.
+    assert "| Dates |" not in html
+
+
+def test_strikethrough_renders():
+    html, _ = render_with_headings("~~gone~~\n", id_prefix="s")
+    assert "<s>gone</s>" in html

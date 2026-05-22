@@ -30,12 +30,14 @@ def _ctx(
     tmp_path: Path,
     defaults: Defaults | None = None,
     metadata: Metadata | None = None,
+    vars: dict | None = None,
 ):
     defaults = defaults or Defaults()
     metadata = metadata or Metadata()
     spec = Spec(
         sections=(TitleSection(title="x"),),
         defaults=defaults, metadata=metadata,
+        vars=vars or {},
     )
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text("# placeholder")
@@ -283,6 +285,59 @@ def test_title_section_uses_metadata_via_yaml_loader(tmp_path: Path):
     title_spec = spec.sections[0]
     assert _resolve_title(title_spec, spec.metadata) == "From Meta"
     assert _resolve_author(title_spec, spec.metadata) == "Meta Author"
+
+
+# --- variable substitution ------------------------------------------------- #
+
+
+def test_title_section_interpolates_vars(tmp_path: Path):
+    ctx = _ctx(tmp_path, vars={"who": "Jane Smith"})
+    s = TitleSection(title="Petition by {{who}}", in_toc=True)
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert any("Petition by Jane Smith" in str(e.label) for e in cs.toc_entries)
+
+
+def test_header_section_interpolates_title_and_body(tmp_path: Path):
+    ctx = _ctx(tmp_path, vars={"who": "Jane"})
+    s = HeaderSection(title="By {{who}}", body="Filed by **{{who}}**")
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert cs.toc_entries[0].label == "By Jane"
+
+
+def test_markdown_section_interpolates_body(tmp_path: Path):
+    md = tmp_path / "doc.md"
+    md.write_text("# Filing\n\nFiled by {{who}} on {{today}}.\n")
+    ctx = _ctx(tmp_path, vars={"who": "Jane"})
+    s = MarkdownSection(path=Path("doc.md"))
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    # Page text should contain the substituted name, not the {{}} literal.
+    from pdfminer.high_level import extract_text
+    text = extract_text(str(cs.pdf_path))
+    assert "Jane" in text
+    assert "{{who}}" not in text
+
+
+def test_markdown_unknown_var_is_passthrough(tmp_path: Path):
+    """A document containing {{unknown}} renders the literal — never errors."""
+    md = tmp_path / "doc.md"
+    md.write_text("# t\n\nliteral {{nothere}} stays.\n")
+    ctx = _ctx(tmp_path, vars={"who": "Jane"})
+    s = MarkdownSection(path=Path("doc.md"))
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    from pdfminer.high_level import extract_text
+    text = extract_text(str(cs.pdf_path))
+    assert "{{nothere}}" in text
+
+
+def test_builtin_today_var_available(tmp_path: Path):
+    import datetime as dt
+    ctx = _ctx(tmp_path)  # no user vars at all
+    s = TitleSection(title="On {{today}}")
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    today = dt.date.today().isoformat()
+    from pdfminer.high_level import extract_text
+    text = extract_text(str(cs.pdf_path))
+    assert today in text
 
 
 def test_date_none_via_yaml(tmp_path: Path):

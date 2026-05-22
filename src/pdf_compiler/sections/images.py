@@ -5,6 +5,7 @@ from dataclasses import dataclass
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
+from pdf_compiler.interpolate import interpolate
 from pdf_compiler.layout.pack import (
     autopack_layout,
     grid_layout,
@@ -27,7 +28,8 @@ class ImagesImpl:
         dest_name = f"{prefix}-images"
 
         paths = [ctx.resolve(img.path) for img in self.spec.images]
-        captions = [img.caption for img in self.spec.images]
+        captions = [interpolate(img.caption, ctx.vars) for img in self.spec.images]
+        title = interpolate(self.spec.title, ctx.vars)
         infos = [probe_image(p, c) for p, c in zip(paths, captions)]
 
         if self.spec.layout == "grid":
@@ -55,7 +57,7 @@ class ImagesImpl:
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
             input_files=tuple(paths),
-            extra=f"images:{prefix}".encode(),
+            extra=f"images:{prefix}:{ctx.vars_hash}".encode(),
         )
         cached = ctx.cache.get(key)
         out = cached if cached is not None else ctx.tmp_pdf("images")
@@ -63,7 +65,7 @@ class ImagesImpl:
             render_to_pdf(
                 "gallery.html",
                 {
-                    "title": self.spec.title,
+                    "title": title,
                     "dest_name": dest_name,
                     "pages": template_pages,
                     "captions": self.spec.captions,
@@ -77,7 +79,7 @@ class ImagesImpl:
             out = ctx.cache.put(key, out)
 
         n = page_count_of(out)
-        label = self.spec.title or "Gallery"
+        label = title or "Gallery"
         toc = (
             (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),)
             if self.spec.in_toc else ()

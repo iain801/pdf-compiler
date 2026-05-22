@@ -28,8 +28,14 @@ class Heading:
 
 
 def make_md() -> MarkdownIt:
-    """The shared markdown-it configuration."""
-    return MarkdownIt("commonmark", {"breaks": False, "html": False, "linkify": True})
+    """The shared markdown-it configuration.
+
+    Built on the CommonMark preset, plus GFM extras users actually expect in
+    documents: pipe tables, strikethrough, and autolinking.
+    """
+    md = MarkdownIt("commonmark", {"breaks": False, "html": False, "linkify": True})
+    md.enable(["table", "strikethrough"])
+    return md
 
 
 def render_with_headings(
