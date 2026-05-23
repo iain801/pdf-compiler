@@ -69,6 +69,33 @@ def probe_image(path: Path, caption: str | None = None, *, rotate: int = 0) -> I
     return ImageInfo(path=path, width=w, height=h, caption=caption)
 
 
+def variable_row_heights(
+    page_cells: list[ImageInfo | None],
+    cols: int,
+    content_h: float,
+) -> list[float]:
+    """Return row heights (in pt) that fill ``content_h`` proportionally.
+
+    Each row's height is proportional to the natural display height of its
+    images when justified to fill the content width.  For a single-column
+    layout this fills the page 100%; for multi-column it fills each row
+    edge-to-edge while preserving image aspect ratios.
+    """
+    rows = math.ceil(len(page_cells) / cols)
+    natural: list[float] = []
+    for r in range(rows):
+        row_imgs = [
+            page_cells[r * cols + c]
+            for c in range(cols)
+            if r * cols + c < len(page_cells) and page_cells[r * cols + c] is not None
+        ]
+        aspect_sum = sum(img.aspect for img in row_imgs) if row_imgs else 1.0
+        # Natural row height ∝ 1/aspect_sum (justified to content width).
+        natural.append(1.0 / aspect_sum)
+    total = sum(natural)
+    return [n / total * content_h for n in natural]
+
+
 def grid_layout(images: list[ImageInfo], per_page: int) -> list[Page]:
     """Fixed ``per_page`` images per page. Grid shape ≈ √per_page."""
     if per_page <= 0:

@@ -11,6 +11,7 @@ from pdf_compiler.layout.pack import (
     autopack_layout,
     grid_layout,
     probe_image,
+    variable_row_heights,
 )
 from pdf_compiler.lengths import page_size_pt, parse_length_pt
 from pdf_compiler.render.html import render_to_pdf
@@ -52,11 +53,17 @@ class ImagesImpl:
             for p, c, r in zip(raw_paths, captions, rotations)
         ]
 
+        optimize = self.spec.optimize_packing
+        layout_infos = (
+            sorted(infos, key=lambda img: img.aspect, reverse=True)
+            if optimize else infos
+        )
+
         if self.spec.layout == "grid":
             per_page = self.spec.per_page or 4
-            pages_layout = grid_layout(infos, per_page)
+            pages_layout = grid_layout(layout_infos, per_page)
         else:
-            pages_layout = autopack_layout(infos)
+            pages_layout = autopack_layout(layout_infos)
 
         # Compute page geometry for explicit cell sizing.
         pw, ph = page_size_pt(defaults.page_size)
@@ -77,34 +84,47 @@ class ImagesImpl:
         template_pages = []
         for pg in pages_layout:
             rows, cols = pg.rows, pg.cols
-            # Divide the content height equally: no row gap (the cell padding
-            # provides visual breathing room between rows).
-            cell_h = content_h_pt / rows
-            # Reserve caption space plus 6pt margin between image and caption.
-            img_h = max(cell_h - caption_h - 6.0, cell_h * 0.6)
+
+            if optimize:
+                # Variable row heights: proportional to natural image dimensions
+                # so every page is filled edge-to-edge.
+                page_infos = [cell.image for cell in pg.cells]
+                row_h_list = variable_row_heights(page_infos, cols, content_h_pt)
+            else:
+                row_h_list = [content_h_pt / rows] * rows
 
             cells_flat = [
                 {
                     "path_url": prepared_url[id(cell.image)],
                     "caption": cell.image.caption,
-                    "img_h_pt": round(img_h, 1),
                 }
                 for cell in pg.cells
             ]
-            # Group cells into rows for the table layout (None = empty last cell).
-            rows_data = [
-                [
-                    cells_flat[r * cols + c] if r * cols + c < len(cells_flat) else None
-                    for c in range(cols)
-                ]
-                for r in range(rows)
-            ]
+
+            rows_data = []
+            for r in range(rows):
+                cell_h = row_h_list[r]
+                img_h = max(cell_h - caption_h - 6.0, cell_h * 0.6)
+                row = []
+                for c in range(cols):
+                    idx = r * cols + c
+                    if idx < len(cells_flat):
+                        row.append({
+                            **cells_flat[idx],
+                            "cell_h_pt": round(cell_h, 1),
+                            "img_h_pt": round(img_h, 1),
+                        })
+                    else:
+                        row.append(None)
+                rows_data.append(row)
+
             template_pages.append({
                 "rows_data": rows_data,
                 "rows": rows,
                 "cols": cols,
-                "cell_h_pt": round(cell_h, 1),
                 "caption_h_pt": round(_CAPTION_H_PT, 1),
+                # Uniform fallback for the non-optimize path (template can use either).
+                "cell_h_pt": round(content_h_pt / rows, 1),
             })
 
         key = hash_section(

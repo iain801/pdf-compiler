@@ -127,6 +127,9 @@ class ImagesSection(_Strict):
     captions: CaptionPlacement = "below"
     images: tuple[ImageItem, ...]
     in_toc: bool = True
+    # When True, sort images by aspect ratio and use variable row heights so
+    # every page is filled edge-to-edge.  Image order is not preserved.
+    optimize_packing: bool = False
 
     @model_validator(mode="after")
     def _nonempty(self):

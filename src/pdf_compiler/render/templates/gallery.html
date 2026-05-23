@@ -28,7 +28,10 @@
     {% for row in page.rows_data %}
     <tr>
       {% for cell in row %}
-      <td style="height: {{ page.cell_h_pt }}pt;
+      {# cell_h_pt and img_h_pt are per-cell when optimize_packing is on,
+         otherwise uniform across the page. #}
+      {% set ch = cell.cell_h_pt if cell else page.cell_h_pt %}
+      <td style="height: {{ ch }}pt;
                  overflow: hidden;
                  vertical-align: top;
                  padding: 0 6pt;
@@ -39,8 +42,6 @@
             <div class="caption" style="height: {{ page.caption_h_pt }}pt; overflow: hidden;">{{ cell.caption }}</div>
           {% endif %}
 
-          {# Explicit height + overflow:hidden on the image wrapper ensures the
-             image never escapes its slot regardless of natural dimensions. #}
           <div style="height: {{ cell.img_h_pt }}pt;
                       overflow: hidden;
                       text-align: center;
