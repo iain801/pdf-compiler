@@ -51,7 +51,11 @@ def compile(  # noqa: A001 — typer convention
     try:
         result = compile_spec(spec, out_path=out_path, jobs=jobs, use_cache=not no_cache)
     except Exception as e:  # noqa: BLE001 — surface friendly errors at CLI edge
-        err.print(f"[red]error:[/red] {e}")
+        import traceback
+        msg = str(e) or type(e).__name__
+        err.print(f"[red]error:[/red] {msg}")
+        err.print()
+        err.print("[dim]" + traceback.format_exc() + "[/dim]")
         raise typer.Exit(code=1) from e
     out.print(f"[green]wrote[/green] {result.output_path} ({result.page_count} pages)")
 

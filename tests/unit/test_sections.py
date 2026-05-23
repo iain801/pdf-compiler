@@ -160,8 +160,8 @@ def test_images_section_grid(tmp_path: Path):
         images=tuple(ImageItem(path=p, caption=f"img {i}") for i, p in enumerate(paths)),
     )
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
-    # 5 images with per_page=4 → 2 pages
-    assert cs.page_count == 2
+    # 5 images with per_page=4 → 2 grid pages + 1 title page = 3 pages
+    assert cs.page_count == 3
 
 
 def test_section_caches_output(tmp_path: Path):

@@ -77,13 +77,12 @@ img { max-width: 100%; }
 .gallery {
   display: grid;
   gap: 1em;
-  break-inside: avoid;
-  page-break-inside: avoid;
 }
 .gallery .cell {
   display: flex; flex-direction: column; align-items: center;
   break-inside: avoid;
   page-break-inside: avoid;
+  overflow: hidden;
 }
 .gallery .cell img {
   max-width: 100%; max-height: 100%; object-fit: contain;
@@ -100,3 +99,9 @@ img { max-width: 100%; }
 }
 
 .page-break { page-break-after: always; }
+
+/* Gallery section title (on its own page before the grid pages) */
+.gallery-title-page {
+  text-align: center;
+  padding-top: 35%;
+}

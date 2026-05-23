@@ -11,6 +11,7 @@ from pdf_compiler.layout.pack import (
     grid_layout,
     probe_image,
 )
+from pdf_compiler.lengths import page_size_pt, parse_length_pt
 from pdf_compiler.render.html import render_to_pdf
 from pdf_compiler.sections._common import SectionMeta, dest_prefix, page_count_of
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
@@ -53,6 +54,10 @@ class ImagesImpl:
                 cells_ctx.append(c)
             template_pages.append({"cells": cells_ctx, "rows": pg.rows, "cols": pg.cols})
 
+        _, page_h = page_size_pt(defaults.page_size)
+        margin_pt = parse_length_pt(defaults.margin)
+        content_height_pt = page_h - 2 * margin_pt
+
         key = hash_section(
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
@@ -72,6 +77,7 @@ class ImagesImpl:
                     "gallery_css": "",
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
+                    "content_height_pt": content_height_pt,
                 },
                 out,
                 base_url=ctx.project_root,
