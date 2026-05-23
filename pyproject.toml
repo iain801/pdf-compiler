@@ -2,7 +2,20 @@
 name = "pdf-compiler"
 version = "0.1.0"
 description = "Stitch large PDFs from a YAML spec: title pages, ToC, markdown, image galleries"
-requires-python = ">=3.14"
+readme = "README.md"
+license = { text = "MIT" }
+keywords = ["pdf", "document", "compiler", "yaml", "markdown"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Text Processing :: Markup",
+    "Topic :: Utilities",
+]
+requires-python = ">=3.12"
 dependencies = [
     "typer>=0.12",
     "rich>=13.7",
@@ -25,6 +38,10 @@ pdfc = "pdf_compiler.cli:app"
 [build-system]
 requires = ["uv_build>=0.11.15,<0.12.0"]
 build-backend = "uv_build"
+
+[project.urls]
+Homepage = "https://github.com/iain801/pdf-compiler"
+Repository = "https://github.com/iain801/pdf-compiler"
 
 [tool.uv]
 package = true

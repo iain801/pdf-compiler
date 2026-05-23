@@ -10,8 +10,7 @@ free.
 """
 from __future__ import annotations
 
-import copy
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import pikepdf
@@ -92,7 +91,7 @@ class AssemblyError(RuntimeError):
 
 def _shift_outline(node: OutlineNode, page_offset: int) -> OutlineNode:
     # local_page becomes a *global* index after shifting.
-    return copy.replace(
+    return replace(
         node,
         local_page=node.local_page + page_offset,
         children=tuple(_shift_outline(c, page_offset) for c in node.children),
