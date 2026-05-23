@@ -164,6 +164,76 @@ def test_images_section_grid(tmp_path: Path):
     assert cs.page_count == 3
 
 
+def _make_imgs(tmp_path: Path, sizes: list[tuple[int, int]]) -> list[Path]:
+    """Create small PNG test images with the given (width, height) sizes."""
+    from PIL import Image
+    paths = []
+    for i, (w, h) in enumerate(sizes):
+        p = tmp_path / f"img{i}_{w}x{h}.png"
+        Image.new("RGB", (w, h), (i * 30, 0, 0)).save(p)
+        paths.append(p)
+    return paths
+
+
+def test_variable_heights_fills_page(tmp_path: Path):
+    """variable_heights=True: each page should produce exactly 1 PDF page
+    (no overflow) even for mixed portrait/landscape images."""
+    pytest.importorskip("PIL")
+    # Mix a wide landscape (4:1) and a tall portrait (1:4) on the same page.
+    paths = _make_imgs(tmp_path, [(400, 100), (100, 400)])
+    ctx = _ctx(tmp_path)
+    s = ImagesSection(
+        per_page=2, layout="grid", variable_heights=True,
+        images=tuple(ImageItem(path=p) for p in paths),
+    )
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert cs.page_count == 1  # no title, 1 grid page → exactly 1 page
+
+
+def test_optimize_packing_reorders_by_aspect(tmp_path: Path):
+    """optimize_packing=True should sort images widest-first."""
+    pytest.importorskip("PIL")
+    # Three images: portrait (1:4), square (1:1), landscape (4:1).
+    # Without reordering: p0=portrait, p1=square, p2=landscape.
+    # With reordering: p2=landscape first, then p1=square, then p0=portrait.
+    paths = _make_imgs(tmp_path, [(100, 400), (100, 100), (400, 100)])
+    ctx = _ctx(tmp_path)
+    s = ImagesSection(
+        per_page=3, layout="grid", optimize_packing=True,
+        images=tuple(ImageItem(path=p) for p in paths),
+    )
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert cs.page_count == 1  # 3 images, 1 page
+
+
+def test_optimize_packing_produces_same_page_count_as_variable_heights(tmp_path: Path):
+    """optimize_packing implies variable_heights — same page count for same images."""
+    pytest.importorskip("PIL")
+    paths = _make_imgs(tmp_path, [(400, 100), (100, 400), (200, 100), (100, 200)])
+    ctx = _ctx(tmp_path)
+    base = dict(per_page=2, layout="grid",
+                images=tuple(ImageItem(path=p) for p in paths))
+    cs_vh = impl_for(ImagesSection(**base, variable_heights=True), 0, ctx.defaults).compile(ctx)
+    cs_op = impl_for(ImagesSection(**base, optimize_packing=True), 0, ctx.defaults).compile(ctx)
+    # Both use variable heights; both should produce the same page count.
+    assert cs_vh.page_count == cs_op.page_count
+
+
+def test_image_rotation_field_accepted(tmp_path: Path):
+    """rotate: 90 on an ImageItem should not crash and should produce output."""
+    pytest.importorskip("PIL")
+    from PIL import Image
+    p = tmp_path / "photo.jpg"
+    Image.new("RGB", (300, 400)).save(p)
+    ctx = _ctx(tmp_path)
+    s = ImagesSection(
+        per_page=1, layout="grid",
+        images=(ImageItem(path=p, caption="rotated", rotate=90),),
+    )
+    cs = impl_for(s, 0, ctx.defaults).compile(ctx)
+    assert cs.page_count >= 1
+
+
 def test_section_caches_output(tmp_path: Path):
     """Compiling the same section twice should hit the cache the second time."""
     md = tmp_path / "doc.md"

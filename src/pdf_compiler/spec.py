@@ -127,8 +127,11 @@ class ImagesSection(_Strict):
     captions: CaptionPlacement = "below"
     images: tuple[ImageItem, ...]
     in_toc: bool = True
-    # When True, sort images by aspect ratio and use variable row heights so
-    # every page is filled edge-to-edge.  Image order is not preserved.
+    # Use variable row heights so every page fills edge-to-edge while keeping
+    # image order.  Rows taller for portrait images, shorter for landscape.
+    variable_heights: bool = False
+    # Sort images by aspect ratio (widest first) AND use variable row heights.
+    # Better packing than variable_heights alone but does not preserve order.
     optimize_packing: bool = False
 
     @model_validator(mode="after")

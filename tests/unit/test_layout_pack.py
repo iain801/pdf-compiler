@@ -6,7 +6,7 @@ import pytest
 from hypothesis import given, strategies as st
 
 from pdf_compiler.layout.pack import (
-    Cell, ImageInfo, autopack_layout, grid_layout,
+    Cell, ImageInfo, autopack_layout, grid_layout, variable_row_heights,
 )
 
 
@@ -93,3 +93,42 @@ def test_grid_layout_no_overlap_within_page():
     pages = grid_layout(imgs, per_page=9)
     coords = [(c.row, c.col) for c in pages[0].cells]
     assert len(set(coords)) == 9
+
+
+# --- variable_row_heights -------------------------------------------------- #
+
+
+def test_variable_row_heights_sum_to_content_h():
+    """Heights must sum exactly to the requested content height."""
+    landscape = _img(1600, 900)
+    portrait  = _img(600, 900)
+    heights = variable_row_heights([landscape, portrait], cols=1, content_h=684.0)
+    assert len(heights) == 2
+    assert abs(sum(heights) - 684.0) < 1e-6
+
+
+def test_variable_row_heights_fills_proportionally():
+    """Portrait image should get a taller row than landscape."""
+    landscape = _img(1600, 900)   # aspect 1.78 → short row
+    portrait  = _img(600, 900)    # aspect 0.67 → tall row
+    h_land, h_port = variable_row_heights([landscape, portrait], cols=1, content_h=684.0)
+    assert h_port > h_land
+
+
+def test_variable_row_heights_equal_for_same_aspect():
+    """Images with identical aspect ratios get equal row heights."""
+    imgs = [_img(100, 100), _img(200, 200)]  # both 1:1
+    h0, h1 = variable_row_heights(imgs, cols=1, content_h=684.0)
+    assert abs(h0 - h1) < 1e-6
+
+
+def test_variable_row_heights_multi_col():
+    """Two columns: each row height based on sum of row's aspects."""
+    # Row 0: two landscape images (aspect 2.0 each) → sum 4.0 → short row
+    # Row 1: two portrait images (aspect 0.5 each) → sum 1.0 → tall row
+    land = _img(200, 100)
+    port = _img(100, 200)
+    h = variable_row_heights([land, land, port, port], cols=2, content_h=600.0)
+    assert len(h) == 2
+    assert abs(sum(h) - 600.0) < 1e-6
+    assert h[1] > h[0]  # portrait row taller

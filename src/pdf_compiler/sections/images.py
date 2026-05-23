@@ -54,6 +54,7 @@ class ImagesImpl:
         ]
 
         optimize = self.spec.optimize_packing
+        use_variable_heights = self.spec.variable_heights or optimize
         layout_infos = (
             sorted(infos, key=lambda img: img.aspect, reverse=True)
             if optimize else infos
@@ -85,9 +86,7 @@ class ImagesImpl:
         for pg in pages_layout:
             rows, cols = pg.rows, pg.cols
 
-            if optimize:
-                # Variable row heights: proportional to natural image dimensions
-                # so every page is filled edge-to-edge.
+            if use_variable_heights:
                 page_infos = [cell.image for cell in pg.cells]
                 row_h_list = variable_row_heights(page_infos, cols, content_h_pt)
             else:
