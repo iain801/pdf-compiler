@@ -8,27 +8,64 @@
   <style>{{ gallery_css|safe }}</style>
 </head>
 <body>
-  {# Section title gets its own page so it doesn't eat into the first grid's height. #}
+  {# Title gets its own page so it doesn't steal height from the first grid. #}
   {% if title %}
     <div class="gallery-title-page">
       <h1 id="{{ dest_name }}">{{ title }}</h1>
     </div>
   {% endif %}
+
+  {# One table per logical gallery page. Height is set on each <td> (not <tr> —
+     WeasyPrint ignores height on <tr>) so content is explicitly bounded and
+     never fragments across pages. #}
   {% for page in pages %}
-    <div class="gallery captions-{{ captions }}"
-         style="{% if title or not loop.first %}page-break-before: always; {% endif %}
-                height: {{ content_height_pt }}pt;
-                grid-template-columns: repeat({{ page.cols }}, 1fr);
-                grid-template-rows: repeat({{ page.rows }}, 1fr);">
-      {% for cell in page.cells %}
-        <div class="cell">
-          <img src="{{ cell.path_url }}" alt="">
-          {% if cell.caption and captions != 'none' %}
-            <div class="caption">{{ cell.caption }}</div>
+  <table style="{% if title or not loop.first %}page-break-before: always; {% endif %}
+                width: 100%;
+                border-collapse: collapse;
+                table-layout: fixed;
+                margin: 0;
+                border: none;">
+    {% for row in page.rows_data %}
+    <tr>
+      {% for cell in row %}
+      <td style="height: {{ page.cell_h_pt }}pt;
+                 overflow: hidden;
+                 vertical-align: top;
+                 padding: 0 6pt;
+                 border: none;
+                 box-sizing: border-box;">
+        {% if cell %}
+          {% if captions == 'above' and cell.caption %}
+            <div class="caption" style="height: {{ page.caption_h_pt }}pt; overflow: hidden;">{{ cell.caption }}</div>
           {% endif %}
-        </div>
+
+          {# Explicit height + overflow:hidden on the image wrapper ensures the
+             image never escapes its slot regardless of natural dimensions. #}
+          <div style="height: {{ cell.img_h_pt }}pt;
+                      overflow: hidden;
+                      text-align: center;
+                      position: relative;">
+            <img src="{{ cell.path_url }}" alt=""
+                 style="max-width: 100%;
+                        max-height: {{ cell.img_h_pt }}pt;
+                        height: auto;
+                        display: block;
+                        margin: 0 auto;
+                        object-fit: contain;">
+            {% if captions == 'overlay' and cell.caption %}
+              <div class="caption-overlay">{{ cell.caption }}</div>
+            {% endif %}
+          </div>
+
+          {% if captions == 'below' and cell.caption %}
+            <div class="caption" style="height: {{ page.caption_h_pt }}pt; overflow: hidden;">{{ cell.caption }}</div>
+          {% endif %}
+        {% endif %}
+      </td>
       {% endfor %}
-    </div>
+    </tr>
+    {% endfor %}
+  </table>
   {% endfor %}
 </body>
 </html>

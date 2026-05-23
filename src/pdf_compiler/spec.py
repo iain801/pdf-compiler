@@ -116,6 +116,7 @@ class PdfSection(_Strict):
 class ImageItem(_Strict):
     path: Path
     caption: str | None = None
+    rotate: Literal[0, 90, 180, 270] = 0
 
 
 class ImagesSection(_Strict):

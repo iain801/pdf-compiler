@@ -73,37 +73,16 @@ img { max-width: 100%; }
 .toc .depth-4 { padding-left: 4.5em; font-size: 0.85em; color: #555; }
 .toc .depth-5, .toc .depth-6 { padding-left: 6em; font-size: 0.8em; color: #666; }
 
-/* Image gallery */
-.gallery {
-  display: grid;
-  gap: 1em;
+/* Image gallery — sizing is handled via inline styles computed in Python;
+   these rules handle typography and the overlay caption variant only. */
+.gallery .caption {
+  font-size: 0.9em; text-align: center; color: #333;
+  margin-top: 0.3em; line-height: 1.3;
 }
-.gallery .cell {
-  display: flex; flex-direction: column; align-items: center;
-  break-inside: avoid;
-  page-break-inside: avoid;
-  overflow: hidden;
-  min-height: 0;
-}
-.gallery .cell img {
-  /* flex: 1 1 auto + min-height: 0 lets the image grow to fill remaining
-     space after the caption, instead of claiming the full 100% cell height
-     and pushing the caption out. */
-  flex: 1 1 auto;
-  min-height: 0;
-  max-width: 100%;
-  object-fit: contain;
-}
-.gallery .cell .caption {
-  flex: 0 0 auto;
-  margin-top: 0.4em; font-size: 0.9em; text-align: center; color: #333;
-}
-.gallery.captions-above .cell { flex-direction: column-reverse; }
-.gallery.captions-overlay .cell { position: relative; }
-.gallery.captions-overlay .cell .caption {
+.caption-overlay {
   position: absolute; bottom: 0; left: 0; right: 0;
   background: rgba(0,0,0,0.55); color: white; padding: 0.3em;
-  margin: 0; font-size: 0.85em;
+  font-size: 0.85em; text-align: center;
 }
 
 .page-break { page-break-after: always; }

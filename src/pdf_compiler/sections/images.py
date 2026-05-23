@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
@@ -17,6 +18,11 @@ from pdf_compiler.sections._common import SectionMeta, dest_prefix, page_count_o
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
 from pdf_compiler.spec import ImagesSection
 
+# Space reserved for a one- or two-line caption below/above each image.
+_CAPTION_H_PT = 36.0
+# Horizontal padding on each cell (left+right = 2× this).
+_CELL_H_PAD_PT = 6.0
+
 
 @dataclass(frozen=True, slots=True)
 class ImagesImpl:
@@ -28,40 +34,83 @@ class ImagesImpl:
         prefix = dest_prefix(self.meta)
         dest_name = f"{prefix}-images"
 
-        paths = [ctx.resolve(img.path) for img in self.spec.images]
+        raw_paths = [ctx.resolve(img.path) for img in self.spec.images]
+        rotations = [img.rotate for img in self.spec.images]
         captions = [interpolate(img.caption, ctx.vars) for img in self.spec.images]
         title = interpolate(self.spec.title, ctx.vars)
-        infos = [probe_image(p, c) for p, c in zip(paths, captions)]
+
+        # Pre-process: apply EXIF transpose + user rotation, saving corrected
+        # temp files only when a transformation is actually needed.
+        prepared_paths = [
+            _prepare_image(p, r, ctx.tmpdir)
+            for p, r in zip(raw_paths, rotations)
+        ]
+
+        # Use corrected dimensions for layout calculations.
+        infos = [
+            probe_image(p, c, rotate=r)
+            for p, c, r in zip(raw_paths, captions, rotations)
+        ]
 
         if self.spec.layout == "grid":
             per_page = self.spec.per_page or 4
             pages_layout = grid_layout(infos, per_page)
-        else:  # autopack
+        else:
             pages_layout = autopack_layout(infos)
 
-        # Convert to template data with file:// URLs (WeasyPrint resolves them).
+        # Compute page geometry for explicit cell sizing.
+        pw, ph = page_size_pt(defaults.page_size)
+        margin_pt = parse_length_pt(defaults.margin)
+        content_w_pt = pw - 2 * margin_pt
+        content_h_pt = ph - 2 * margin_pt
+
+        # Caption space: 0 for overlay (caption drawn on image) and none.
+        captions_mode = self.spec.captions
+        caption_h = _CAPTION_H_PT if captions_mode not in ("none", "overlay") else 0.0
+
+        # Map each ImageInfo back to its prepared path URL.
+        prepared_url = {
+            id(info): prepared.as_uri()
+            for info, prepared in zip(infos, prepared_paths)
+        }
+
         template_pages = []
         for pg in pages_layout:
-            cells_ctx = []
-            for cell in pg.cells:
-                c = {
-                    "path_url": cell.image.path.as_uri(),
-                    "caption": cell.image.caption,
-                    "row": cell.row, "col": cell.col,
-                    "left_pct": cell.left_pct, "top_pct": cell.top_pct,
-                    "width_pct": cell.width_pct, "height_pct": cell.height_pct,
-                }
-                cells_ctx.append(c)
-            template_pages.append({"cells": cells_ctx, "rows": pg.rows, "cols": pg.cols})
+            rows, cols = pg.rows, pg.cols
+            # Divide the content height equally: no row gap (the cell padding
+            # provides visual breathing room between rows).
+            cell_h = content_h_pt / rows
+            # Reserve caption space plus 6pt margin between image and caption.
+            img_h = max(cell_h - caption_h - 6.0, cell_h * 0.6)
 
-        _, page_h = page_size_pt(defaults.page_size)
-        margin_pt = parse_length_pt(defaults.margin)
-        content_height_pt = page_h - 2 * margin_pt
+            cells_flat = [
+                {
+                    "path_url": prepared_url[id(cell.image)],
+                    "caption": cell.image.caption,
+                    "img_h_pt": round(img_h, 1),
+                }
+                for cell in pg.cells
+            ]
+            # Group cells into rows for the table layout (None = empty last cell).
+            rows_data = [
+                [
+                    cells_flat[r * cols + c] if r * cols + c < len(cells_flat) else None
+                    for c in range(cols)
+                ]
+                for r in range(rows)
+            ]
+            template_pages.append({
+                "rows_data": rows_data,
+                "rows": rows,
+                "cols": cols,
+                "cell_h_pt": round(cell_h, 1),
+                "caption_h_pt": round(_CAPTION_H_PT, 1),
+            })
 
         key = hash_section(
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
-            input_files=tuple(paths),
+            input_files=tuple(raw_paths),
             extra=f"images:{prefix}:{ctx.vars_hash}".encode(),
         )
         cached = ctx.cache.get(key)
@@ -73,11 +122,12 @@ class ImagesImpl:
                     "title": title,
                     "dest_name": dest_name,
                     "pages": template_pages,
-                    "captions": self.spec.captions,
+                    "captions": captions_mode,
                     "gallery_css": "",
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
-                    "content_height_pt": content_height_pt,
+                    "content_h_pt": round(content_h_pt, 1),
+                    "content_w_pt": round(content_w_pt, 1),
                 },
                 out,
                 base_url=ctx.project_root,
@@ -99,3 +149,30 @@ class ImagesImpl:
             toc_entries=toc, outline=outline,
             destinations={dest_name: 0},
         )
+
+
+def _prepare_image(path: Path, rotate: int, tmpdir: Path) -> Path:
+    """Return path to an image with EXIF orientation corrected and user
+    rotation applied.  Returns the original path unchanged when no
+    transformation is needed so the cache stays efficient."""
+    from PIL import Image, ImageOps  # noqa: PLC0415
+
+    with Image.open(path) as im:
+        corrected = ImageOps.exif_transpose(im)
+        changed = corrected.size != im.size or corrected.mode != im.mode
+        if rotate:
+            # User rotation is clockwise degrees; PIL rotate() is CCW.
+            corrected = corrected.rotate(-rotate, expand=True)
+            changed = True
+        if not changed:
+            # Quick check: if transpose didn't change size/mode and no user
+            # rotation, pixel data is also unchanged — skip the write.
+            return path
+        corrected = corrected.copy()
+
+    ext = path.suffix.lower()
+    fmt = "JPEG" if ext in (".jpg", ".jpeg") else "PNG"
+    out = tmpdir / f"{path.stem}-rot{rotate}{path.suffix}"
+    save_kw = {"quality": 92, "optimize": True} if fmt == "JPEG" else {}
+    corrected.save(out, format=fmt, **save_kw)
+    return out

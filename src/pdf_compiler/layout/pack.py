@@ -55,9 +55,17 @@ class Page:
     cols: int = 1
 
 
-def probe_image(path: Path, caption: str | None = None) -> ImageInfo:
+def probe_image(path: Path, caption: str | None = None, *, rotate: int = 0) -> ImageInfo:
+    """Return image info with corrected dimensions (EXIF + user rotation applied)."""
+    from PIL import ImageOps  # noqa: PLC0415
     with Image.open(path) as im:
+        try:
+            im = ImageOps.exif_transpose(im)
+        except Exception:  # noqa: BLE001
+            pass
         w, h = im.size
+    if rotate in (90, 270):
+        w, h = h, w
     return ImageInfo(path=path, width=w, height=h, caption=caption)
 
 
