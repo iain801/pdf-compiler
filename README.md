@@ -236,23 +236,49 @@ Page-range syntax:
 ```yaml
 - type: images
   title: "Site Photographs"
-  per_page: 4                # used by grid layout
+  per_page: 4                # images per page (grid layout)
   layout: grid               # grid | autopack
   captions: below            # below | above | overlay | none
+  variable_heights: false    # proportional row heights, preserve order
+  optimize_packing: false    # sort by aspect ratio + proportional heights
   images:
     - { path: site/a.jpg, caption: "Entrance, looking north" }
     - { path: site/b.jpg, caption: "South wall, post-repair" }
+    - { path: site/c.jpg, caption: "Portrait shot", rotate: 90 }
 ```
 
-Two layout modes:
+**Layout modes:**
 
-- **`grid`** packs exactly `per_page` images per page on a √N grid
-  (e.g. `per_page: 4` → 2×2; `per_page: 6` → 2×3). Predictable, good
-  when images share an aspect ratio.
-- **`autopack`** uses a Flickr-style justified-rows algorithm: each
-  page is filled with rows of images that justify to a target height.
-  Pages break when vertical space runs out. Layout is non-overlapping
-  by construction.
+- **`grid`** places exactly `per_page` images per page on a √N grid
+  (e.g. `per_page: 4` → 2×2; `per_page: 6` → 2×3). By default each
+  row gets an equal share of the page height.
+- **`autopack`** uses a justified-rows algorithm: images fill each row
+  to the page width, rows stack until the page is full. Variable images
+  per page, non-overlapping by construction.
+
+**Packing options (grid layout):**
+
+- **`variable_heights: true`** — row heights are proportional to the
+  natural dimensions of the images in that row rather than equal
+  fractions. A page with one portrait and one landscape image fills
+  edge-to-edge instead of leaving up to 40% whitespace. Image order is
+  preserved.
+- **`optimize_packing: true`** — implies `variable_heights` and also
+  sorts images widest-first before assigning pages, grouping similar
+  aspect ratios together for the most uniform pages. Image order is
+  **not** preserved.
+
+**Per-image rotation:**
+
+EXIF orientation is applied automatically. For manual corrections, set
+`rotate` (degrees clockwise) on any image:
+
+```yaml
+images:
+  - { path: photo.jpg, caption: "Normal" }
+  - { path: sideways.jpg, caption: "Rotated CW", rotate: 90 }
+  - { path: upside_down.jpg, rotate: 180 }
+```
 
 ---
 
@@ -357,7 +383,7 @@ parse → validate → resolve paths →
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # 150 tests; runs in ~4s
+uv run pytest                 # 158 tests; runs in ~4s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
 ```
