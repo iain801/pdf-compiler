@@ -13,11 +13,11 @@
     <div class="gallery-title-page">
       <h1 id="{{ dest_name }}">{{ title }}</h1>
     </div>
-    <div class="page-break"></div>
   {% endif %}
   {% for page in pages %}
     <div class="gallery captions-{{ captions }}"
-         style="height: {{ content_height_pt }}pt;
+         style="{% if title or not loop.first %}page-break-before: always; {% endif %}
+                height: {{ content_height_pt }}pt;
                 grid-template-columns: repeat({{ page.cols }}, 1fr);
                 grid-template-rows: repeat({{ page.rows }}, 1fr);">
       {% for cell in page.cells %}
@@ -29,7 +29,6 @@
         </div>
       {% endfor %}
     </div>
-    {% if not loop.last %}<div class="page-break"></div>{% endif %}
   {% endfor %}
 </body>
 </html>

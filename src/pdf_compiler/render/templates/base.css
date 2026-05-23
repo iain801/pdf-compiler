@@ -83,11 +83,19 @@ img { max-width: 100%; }
   break-inside: avoid;
   page-break-inside: avoid;
   overflow: hidden;
+  min-height: 0;
 }
 .gallery .cell img {
-  max-width: 100%; max-height: 100%; object-fit: contain;
+  /* flex: 1 1 auto + min-height: 0 lets the image grow to fill remaining
+     space after the caption, instead of claiming the full 100% cell height
+     and pushing the caption out. */
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  object-fit: contain;
 }
 .gallery .cell .caption {
+  flex: 0 0 auto;
   margin-top: 0.4em; font-size: 0.9em; text-align: center; color: #333;
 }
 .gallery.captions-above .cell { flex-direction: column-reverse; }
