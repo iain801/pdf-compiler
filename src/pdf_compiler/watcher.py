@@ -1,4 +1,4 @@
-"""`pdfc watch` — recompile on filesystem changes to the spec or its inputs."""
+"""`pdfc watch` — recompile only when spec inputs change."""
 from __future__ import annotations
 
 import time
@@ -12,43 +12,49 @@ from pdf_compiler.pipeline import compile_spec
 
 _console = Console()
 
-# Extensions and names that never trigger a recompile.  These cover:
-#   - The output PDF itself (matched by resolved path, see _Handler)
-#   - iCloud Drive sync artefacts (.icloud placeholders, xattr helpers)
-#   - OS and editor temp/meta files
-_IGNORE_SUFFIXES = frozenset({
-    ".icloud", ".tmp", ".swp", ".swo", ".pyc", ".pyo",
-})
-_IGNORE_NAMES = frozenset({
-    ".DS_Store", "Thumbs.db", "desktop.ini",
-})
-
 
 def run_watch(spec_path: Path, *, out_path: Path | None = None) -> None:
-    """Block, recompiling on every relevant change. Press Ctrl-C to stop."""
+    """Block, recompiling whenever a known input file changes."""
+    spec_path = spec_path.resolve()
 
-    # Resolve the output path now so the handler can ignore write events to it.
-    try:
-        from pdf_compiler.loader import load_spec
-        _spec = load_spec(spec_path)
-        output_path = (out_path or spec_path.parent / _spec.output).resolve()
-    except Exception:  # noqa: BLE001
-        output_path = out_path.resolve() if out_path else None
+    # Mutable state shared between compile_once and the event handler.
+    inputs: set[Path] = _collect_inputs(spec_path)
+    watched_dirs: set[Path] = set()
+
+    observer = Observer()
+    handler = _Handler(callback=None, get_inputs=lambda: inputs)
+
+    def _schedule_new_dirs() -> None:
+        for p in inputs:
+            d = p.parent
+            if d not in watched_dirs and d.is_dir():
+                observer.schedule(handler, str(d), recursive=False)
+                watched_dirs.add(d)
 
     def compile_once() -> None:
+        nonlocal inputs
         try:
             r = compile_spec(spec_path, out_path=out_path)
-            _console.print(f"[green]✓[/green] {r.output_path} ({r.page_count} pages)")
+            _console.print(
+                f"[green]✓[/green] {r.output_path} ({r.page_count} pages)"
+            )
         except Exception as e:  # noqa: BLE001
             _console.print(f"[red]✗[/red] {e}")
+        # Refresh inputs after every attempt — spec may have changed.
+        inputs = _collect_inputs(spec_path)
+        _schedule_new_dirs()
 
-    compile_once()
-    handler = _Handler(compile_once, output_path=output_path)
-    observer = Observer()
-    observer.schedule(handler, str(spec_path.parent.resolve()), recursive=True)
+    handler._cb = compile_once  # type: ignore[attr-defined]
+
+    # Schedule initial directories before starting the observer.
+    _schedule_new_dirs()
     observer.start()
+    compile_once()
+
+    n = len(inputs)
     _console.print(
-        f"[blue]watching[/blue] {spec_path.parent.resolve()} — Ctrl-C to stop"
+        f"[blue]watching[/blue] {n} input file{'s' if n != 1 else ''} — "
+        "Ctrl-C to stop"
     )
     try:
         while True:
@@ -58,37 +64,37 @@ def run_watch(spec_path: Path, *, out_path: Path | None = None) -> None:
     observer.join()
 
 
+def _collect_inputs(spec_path: Path) -> set[Path]:
+    """Return the resolved paths of every file that can affect the build."""
+    base = spec_path.parent
+    result: set[Path] = {spec_path}
+    try:
+        from pdf_compiler.loader import load_spec  # noqa: PLC0415
+        spec = load_spec(spec_path)
+        for sec in spec.sections:
+            if (p := getattr(sec, "path", None)) is not None:
+                result.add((base / p).resolve())
+            if (imgs := getattr(sec, "images", None)) is not None:
+                for img in imgs:
+                    result.add((base / img.path).resolve())
+    except Exception:  # noqa: BLE001
+        # Spec may be mid-edit and unparseable; keep watching the spec file.
+        pass
+    return result
+
+
 class _Handler(FileSystemEventHandler):
-    def __init__(
-        self,
-        callback,
-        output_path: Path | None,
-        debounce: float = 1.5,
-    ):
+    def __init__(self, callback, get_inputs, debounce: float = 1.0):
         self._cb = callback
+        self._get_inputs = get_inputs
         self._debounce = debounce
         self._last = 0.0
-        self._output = output_path
-
-    def _should_ignore(self, src_path: str) -> bool:
-        p = Path(src_path)
-        name = p.name
-        # Hidden files and editor temp files.
-        if name.startswith(".") or name.startswith("~"):
-            return True
-        if name in _IGNORE_NAMES:
-            return True
-        if p.suffix.lower() in _IGNORE_SUFFIXES:
-            return True
-        # The output PDF: writing it must not re-trigger compilation.
-        if self._output and p.resolve() == self._output:
-            return True
-        return False
 
     def on_any_event(self, event) -> None:
         if event.is_directory:
             return
-        if self._should_ignore(event.src_path):
+        # Only react to files we actually care about.
+        if Path(event.src_path).resolve() not in self._get_inputs():
             return
         now = time.monotonic()
         if now - self._last < self._debounce:
