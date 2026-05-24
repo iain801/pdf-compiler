@@ -19,7 +19,8 @@
       <ul>
         {% for entry in subtoc_entries %}
           <li class="depth-{{ entry.depth }}">
-            <span class="label"><a href="#{{ entry.dest_name }}">{{ entry.label }}</a></span>
+            <span class="label"><a href="#__stoc_{{ loop.index0 }}">{{ entry.label }}</a></span>
+            <span id="__stoc_{{ loop.index0 }}"></span>
             <span class="dots"></span>
             <span class="page">{{ entry.page_label }}</span>
           </li>

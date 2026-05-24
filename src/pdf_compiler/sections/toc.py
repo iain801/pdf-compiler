@@ -20,6 +20,8 @@ from pathlib import Path
 
 import pikepdf
 
+import pikepdf
+
 from pdf_compiler.context import BuildContext
 from pdf_compiler.interpolate import interpolate
 from pdf_compiler.md_ast import make_md
@@ -79,7 +81,9 @@ def render_toc(
         base_url=ctx.project_root,
     )
     with pikepdf.open(out_path) as pdf:
-        return len(pdf.pages)
+        n = len(pdf.pages)
+    _rewrite_toc_links(out_path, rendered_entries)
+    return n
 
 
 def render_subtoc_header(
@@ -113,7 +117,9 @@ def render_subtoc_header(
         base_url=ctx.project_root,
     )
     with pikepdf.open(out_path) as pdf:
-        return len(pdf.pages)
+        n = len(pdf.pages)
+    _rewrite_toc_links(out_path, rendered_entries)
+    return n
 
 
 def _entries_with_labels(
@@ -193,3 +199,58 @@ def subtoc_header_compiled_section(
         outline=outline,
         destinations={dest_name: 0},
     )
+
+
+# ---------------------------------------------------------------------------
+# Link annotation rewriter
+# ---------------------------------------------------------------------------
+
+
+def _rewrite_toc_links(pdf_path: Path, entries: list[dict]) -> None:
+    """Replace self-referencing link annotations with cross-doc GoTo actions.
+
+    WeasyPrint only emits a PDF link annotation when ``href="#id"`` has a
+    matching ``id`` in the same document.  The templates add a dummy
+    ``<span id="__toc_N">`` (or ``__stoc_N``) next to each entry so
+    WeasyPrint *does* emit the annotation — but it points back to that
+    span on the ToC page.  This function rewrites every such annotation to
+    ``/GoTo (real-content-dest-name)`` so clicking it jumps to the right
+    page in the assembled document.
+
+    Matching is positional: annotations are sorted top-to-bottom across
+    pages (mirroring entry render order) and zipped with ``entries``.
+    """
+    if not entries:
+        return
+
+    with pikepdf.open(pdf_path, allow_overwriting_input=True) as pdf:
+        # Collect all Link annotations in top-to-bottom, page order.
+        annots_ordered: list[pikepdf.Dictionary] = []
+        for page in pdf.pages:
+            page_h = float(page.MediaBox[3]) - float(page.MediaBox[1])
+            page_annots = []
+            for annot in page.obj.get("/Annots", []):
+                if annot.get("/Subtype") != pikepdf.Name("/Link"):
+                    continue
+                rect = annot["/Rect"]
+                # PDF y=0 is at the bottom; negate so sorting gives top-first.
+                y_top = -(float(rect[3]) - float(page.MediaBox[1]))
+                page_annots.append((y_top, annot))
+            page_annots.sort(key=lambda t: t[0])
+            annots_ordered.extend(a for _, a in page_annots)
+
+        if len(annots_ordered) != len(entries):
+            # Mismatch — something unexpected in the PDF; skip rewriting to
+            # avoid corrupting annotations rather than silently mis-mapping.
+            return
+
+        for annot, entry in zip(annots_ordered, entries):
+            annot["/A"] = pikepdf.Dictionary(
+                Type=pikepdf.Name("/Action"),
+                S=pikepdf.Name("/GoTo"),
+                D=pikepdf.String(entry["dest_name"]),
+            )
+            if "/Dest" in annot:
+                del annot["/Dest"]
+
+        pdf.save(pdf_path)

@@ -11,7 +11,11 @@
   <ul>
     {% for entry in entries %}
       <li class="depth-{{ entry.depth }}">
-        <span class="label"><a href="#{{ entry.dest_name }}">{{ entry.label }}</a></span>
+        {# href targets a same-document anchor so WeasyPrint emits a real PDF
+           link annotation. The annotation is rewritten to the cross-document
+           destination after rendering (see toc.py _rewrite_toc_links). #}
+        <span class="label"><a href="#__toc_{{ loop.index0 }}">{{ entry.label }}</a></span>
+        <span id="__toc_{{ loop.index0 }}"></span>
         <span class="dots"></span>
         <span class="page">{{ entry.page_label }}</span>
       </li>
