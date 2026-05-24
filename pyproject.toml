@@ -1,6 +1,6 @@
 [project]
 name = "pdf-compiler"
-version = "0.1.0"
+version = "0.2.0"
 description = "Stitch large PDFs from a YAML spec: title pages, ToC, markdown, image galleries"
 readme = "README.md"
 license = "MIT"
