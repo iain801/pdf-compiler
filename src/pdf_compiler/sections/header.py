@@ -28,7 +28,7 @@ class HeaderImpl:
         dest_name = f"{prefix}-header"
         title = interpolate(self.spec.title, ctx.vars)
         subtitle = interpolate(self.spec.subtitle, ctx.vars)
-        body = interpolate(self.spec.body, ctx.vars)
+        body = interpolate(self.spec.body, ctx.vars, markdown=True)
 
         key = hash_section(
             self.spec.model_dump(mode="json"),

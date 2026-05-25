@@ -22,7 +22,7 @@ class MarkdownImpl:
         defaults = self.meta.defaults
         prefix = dest_prefix(self.meta)
         md_path = ctx.resolve(self.spec.path)
-        md_text = interpolate(md_path.read_text(encoding="utf-8"), ctx.vars)
+        md_text = interpolate(md_path.read_text(encoding="utf-8"), ctx.vars, markdown=True)
 
         # Render markdown → HTML and extract headings (with injected anchors).
         html_body, headings = render_with_headings(md_text, id_prefix=prefix)

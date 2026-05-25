@@ -100,7 +100,7 @@ def render_subtoc_header(
     rendered_entries = _entries_with_labels(
         entries, spec.subtoc_depth, defaults.page_numbering, front_matter_pages,
     )
-    body = interpolate(spec.body, ctx.vars)
+    body = interpolate(spec.body, ctx.vars, markdown=True)
     body_html = make_md().render(body) if body else None
     render_to_pdf(
         "header.html",

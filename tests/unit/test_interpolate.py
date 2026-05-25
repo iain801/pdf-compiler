@@ -67,3 +67,28 @@ def test_resolve_vars_coerces_non_strings():
     assert v["n"] == "42"
     assert v["f"] == "3.14"
     assert v["b"] == "True"
+
+
+# --- markdown=True newline handling ---------------------------------------- #
+
+
+def test_interpolate_markdown_converts_newline_to_hard_break():
+    """A newline in a var value must become a CommonMark hard line break."""
+    result = interpolate("{{addr}}", {"addr": "Line1\nLine2"}, markdown=True)
+    assert result == "Line1  \nLine2"
+
+
+def test_interpolate_markdown_multiple_newlines():
+    result = interpolate("{{x}}", {"x": "a\nb\nc"}, markdown=True)
+    assert result == "a  \nb  \nc"
+
+
+def test_interpolate_non_markdown_leaves_newlines_unchanged():
+    """Without markdown=True newlines in var values pass through as-is."""
+    result = interpolate("{{addr}}", {"addr": "Line1\nLine2"})
+    assert result == "Line1\nLine2"
+
+
+def test_interpolate_markdown_no_newline_unchanged():
+    """Var values without newlines are unaffected by markdown=True."""
+    assert interpolate("{{x}}", {"x": "hello"}, markdown=True) == "hello"

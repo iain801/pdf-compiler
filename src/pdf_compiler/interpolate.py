@@ -39,14 +39,35 @@ def resolve_vars(user_vars: Mapping[str, Any] | None) -> dict[str, str]:
     return out
 
 
-def interpolate(text: str | None, vars: Mapping[str, str]) -> str | None:
+def interpolate(
+    text: str | None,
+    vars: Mapping[str, str],
+    *,
+    markdown: bool = False,
+) -> str | None:
     """Replace ``{{ name }}`` references in ``text`` using ``vars``.
 
     Unknown names render as their literal source (``{{ name }}``).
+
+    When *markdown* is ``True``, newlines in substituted values are
+    converted to CommonMark hard line breaks (``  \\n``) so that a
+    multi-line var value produces actual line breaks in the rendered PDF
+    rather than collapsing to a space.  Pass ``markdown=True`` when
+    interpolating into markdown file content or header body text;
+    leave it ``False`` for titles, captions, and other HTML-rendered
+    strings where whitespace is handled by the browser/renderer.
     """
     if not text or "{{" not in text:
         return text
-    return _VAR_RE.sub(lambda m: vars.get(m.group(1), m.group(0)), text)
+
+    def _repl(m: re.Match) -> str:
+        val = vars.get(m.group(1), m.group(0))
+        if markdown and "\n" in val:
+            # Two trailing spaces = CommonMark hard line break.
+            val = val.replace("\n", "  \n")
+        return val
+
+    return _VAR_RE.sub(_repl, text)
 
 
 def vars_hash(vars: Mapping[str, str]) -> str:
