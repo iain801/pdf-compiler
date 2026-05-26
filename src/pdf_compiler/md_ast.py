@@ -34,7 +34,7 @@ def make_md() -> MarkdownIt:
     Built on the CommonMark preset, plus GFM extras users actually expect in
     documents: pipe tables, strikethrough, and autolinking.
     """
-    md = MarkdownIt("commonmark", {"breaks": False, "html": False, "linkify": True})
+    md = MarkdownIt("commonmark", {"breaks": True, "html": True, "linkify": True})
     md.enable(["table", "strikethrough"])
     return md
 
