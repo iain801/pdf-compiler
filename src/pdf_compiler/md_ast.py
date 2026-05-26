@@ -101,7 +101,7 @@ def _extract_headings_flat(tokens: list[Token], *, max_depth: int) -> list[Headi
         # markdown-it's tag is "h1".."h6".
         try:
             level = int(tok.tag[1:])
-        except ValueError, IndexError:
+        except (ValueError, IndexError):
             continue
         if level > max_depth:
             continue

@@ -65,7 +65,7 @@ def _locate(data: Any, loc: tuple) -> int | None:
         if isinstance(part, int):
             try:
                 nxt = node[part]
-            except TypeError, IndexError, KeyError:
+            except (TypeError, IndexError, KeyError):
                 nxt = None
         elif isinstance(node, dict) and part in node:
             # Prefer the value's line, but try to grab the key's line first
@@ -96,7 +96,7 @@ def _key_line(node: Any, key: Any) -> int | None:
         return None
     try:
         info = lc.key(key)
-    except KeyError, AttributeError:
+    except (KeyError, AttributeError):
         return None
     if info is None:
         return None

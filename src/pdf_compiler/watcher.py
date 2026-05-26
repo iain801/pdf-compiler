@@ -69,7 +69,7 @@ def _collect_inputs(spec_path: Path) -> set[Path]:
     result: set[Path] = {spec_path}
     try:
         spec = load_spec(spec_path)
-    except SpecError, OSError:
+    except (SpecError, OSError):
         # Spec may be mid-edit and unparseable; keep watching the spec file.
         return result
     for sec in spec.sections:

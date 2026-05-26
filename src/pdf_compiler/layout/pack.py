@@ -102,7 +102,7 @@ def grid_layout(images: list[ImageInfo], per_page: int) -> list[Page]:
     cols = max(1, round(math.sqrt(per_page)))
     rows = math.ceil(per_page / cols)
     pages: list[Page] = []
-    for chunk in batched(images, per_page, strict=False):
+    for chunk in batched(images, per_page):
         cells = tuple(Cell(image=img, row=i // cols, col=i % cols) for i, img in enumerate(chunk))
         pages.append(Page(cells=cells, rows=rows, cols=cols))
     return pages
