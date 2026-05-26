@@ -7,6 +7,7 @@ We never touch a string-based regex on the markdown — we manipulate the token
 list and let markdown-it render the HTML. Anchor IDs are deterministic
 (slug + counter on collision) so re-runs produce identical PDFs and cache.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -24,7 +25,7 @@ class Heading:
     level: int
     text: str
     anchor_id: str
-    children: list["Heading"] = field(default_factory=list)
+    children: list[Heading] = field(default_factory=list)
 
 
 def make_md() -> MarkdownIt:
@@ -86,7 +87,7 @@ def _inject_anchor_ids(tokens: list[Token], *, id_prefix: str) -> None:
             anchor = f"{id_prefix}-{slug}{suffix}"
             tok.attrSet("id", anchor)
             # Stash the resolved anchor + plain text for the extractor.
-            tok.meta = (tok.meta or {})
+            tok.meta = tok.meta or {}
             tok.meta["__pdf_compiler_anchor__"] = anchor
             tok.meta["__pdf_compiler_text__"] = text
         i += 1
@@ -100,7 +101,7 @@ def _extract_headings_flat(tokens: list[Token], *, max_depth: int) -> list[Headi
         # markdown-it's tag is "h1".."h6".
         try:
             level = int(tok.tag[1:])
-        except (ValueError, IndexError):
+        except ValueError, IndexError:
             continue
         if level > max_depth:
             continue

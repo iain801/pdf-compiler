@@ -1,4 +1,5 @@
 """`pdfc watch` — recompile only when spec inputs change."""
+
 from __future__ import annotations
 
 import time
@@ -8,6 +9,7 @@ from rich.console import Console
 from watchdog.events import FileSystemEventHandler
 from watchdog.observers import Observer
 
+from pdf_compiler.loader import SpecError, load_spec
 from pdf_compiler.pipeline import compile_spec
 
 _console = Console()
@@ -35,10 +37,10 @@ def run_watch(spec_path: Path, *, out_path: Path | None = None) -> None:
         nonlocal inputs
         try:
             r = compile_spec(spec_path, out_path=out_path)
-            _console.print(
-                f"[green]✓[/green] {r.output_path} ({r.page_count} pages)"
-            )
+            _console.print(f"[green]✓[/green] {r.output_path} ({r.page_count} pages)")
         except Exception as e:  # noqa: BLE001
+            # Watcher boundary: any failure from the pipeline is reported and
+            # then swallowed so the loop survives to the next file change.
             _console.print(f"[red]✗[/red] {e}")
         # Refresh inputs after every attempt — spec may have changed.
         inputs = _collect_inputs(spec_path)
@@ -52,10 +54,7 @@ def run_watch(spec_path: Path, *, out_path: Path | None = None) -> None:
     compile_once()
 
     n = len(inputs)
-    _console.print(
-        f"[blue]watching[/blue] {n} input file{'s' if n != 1 else ''} — "
-        "Ctrl-C to stop"
-    )
+    _console.print(f"[blue]watching[/blue] {n} input file{'s' if n != 1 else ''} — Ctrl-C to stop")
     try:
         while True:
             time.sleep(0.5)
@@ -69,17 +68,16 @@ def _collect_inputs(spec_path: Path) -> set[Path]:
     base = spec_path.parent
     result: set[Path] = {spec_path}
     try:
-        from pdf_compiler.loader import load_spec  # noqa: PLC0415
         spec = load_spec(spec_path)
-        for sec in spec.sections:
-            if (p := getattr(sec, "path", None)) is not None:
-                result.add((base / p).resolve())
-            if (imgs := getattr(sec, "images", None)) is not None:
-                for img in imgs:
-                    result.add((base / img.path).resolve())
-    except Exception:  # noqa: BLE001
+    except SpecError, OSError:
         # Spec may be mid-edit and unparseable; keep watching the spec file.
-        pass
+        return result
+    for sec in spec.sections:
+        if (p := getattr(sec, "path", None)) is not None:
+            result.add((base / p).resolve())
+        if (imgs := getattr(sec, "images", None)) is not None:
+            for img in imgs:
+                result.add((base / img.path).resolve())
     return result
 
 

@@ -1,7 +1,9 @@
 """Typer-based CLI: compile, validate, watch, cache."""
+
 from __future__ import annotations
 
 import sys
+import traceback
 from pathlib import Path
 
 import typer
@@ -29,18 +31,25 @@ def _version_callback(value: bool) -> None:
 @app.callback()
 def _root(
     version: bool = typer.Option(
-        False, "--version", "-V", callback=_version_callback, is_eager=True,
+        False,
+        "--version",
+        "-V",
+        callback=_version_callback,
+        is_eager=True,
         help="Show version and exit.",
     ),
 ) -> None:
     """pdfc — stitch PDFs from YAML."""
 
 
-@app.command()
-def compile(  # noqa: A001 — typer convention
+@app.command("compile")
+def compile_cmd(
     spec: Path = typer.Argument(..., exists=True, dir_okay=False, readable=True),
     out_path: Path | None = typer.Option(
-        None, "--out", "-o", help="Override the output path from the spec.",
+        None,
+        "--out",
+        "-o",
+        help="Override the output path from the spec.",
     ),
     jobs: int = typer.Option(0, "--jobs", "-j", help="Parallel workers (0 = auto)."),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the section cache."),
@@ -50,8 +59,9 @@ def compile(  # noqa: A001 — typer convention
 
     try:
         result = compile_spec(spec, out_path=out_path, jobs=jobs, use_cache=not no_cache)
-    except Exception as e:  # noqa: BLE001 — surface friendly errors at CLI edge
-        import traceback
+    except Exception as e:  # noqa: BLE001
+        # CLI boundary: any unhandled error from the pipeline becomes a
+        # friendly one-line error plus a dimmed traceback for debugging.
         msg = str(e) or type(e).__name__
         err.print(f"[red]error:[/red] {msg}")
         err.print()
@@ -93,7 +103,7 @@ app.add_typer(cache_app, name="cache")
 @cache_app.command("clear")
 def cache_clear() -> None:
     """Delete all cached compiled sections."""
-    from pdf_compiler.cache import default_cache_dir, clear_cache
+    from pdf_compiler.cache import clear_cache, default_cache_dir
 
     n = clear_cache(default_cache_dir())
     out.print(f"[green]cleared[/green] {n} cache entries")

@@ -3,10 +3,14 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from pdf_compiler.layout.pack import (
-    Cell, ImageInfo, autopack_layout, grid_layout, variable_row_heights,
+    ImageInfo,
+    autopack_layout,
+    grid_layout,
+    variable_row_heights,
 )
 
 
@@ -52,8 +56,7 @@ def test_autopack_no_overlap_within_page():
     pages = autopack_layout(imgs)
     for page in pages:
         rects = [
-            (c.left_pct, c.top_pct,
-             c.left_pct + c.width_pct, c.top_pct + c.height_pct)
+            (c.left_pct, c.top_pct, c.left_pct + c.width_pct, c.top_pct + c.height_pct)
             for c in page.cells
         ]
         # Pairwise non-overlap.
@@ -61,8 +64,9 @@ def test_autopack_no_overlap_within_page():
             for j in range(i + 1, len(rects)):
                 ax1, ay1, ax2, ay2 = rects[i]
                 bx1, by1, bx2, by2 = rects[j]
-                disjoint = ax2 <= bx1 + 1e-6 or bx2 <= ax1 + 1e-6 \
-                           or ay2 <= by1 + 1e-6 or by2 <= ay1 + 1e-6
+                disjoint = (
+                    ax2 <= bx1 + 1e-6 or bx2 <= ax1 + 1e-6 or ay2 <= by1 + 1e-6 or by2 <= ay1 + 1e-6
+                )
                 assert disjoint, f"overlap between {rects[i]} and {rects[j]}"
 
 
@@ -101,7 +105,7 @@ def test_grid_layout_no_overlap_within_page():
 def test_variable_row_heights_sum_to_content_h():
     """Heights must sum exactly to the requested content height."""
     landscape = _img(1600, 900)
-    portrait  = _img(600, 900)
+    portrait = _img(600, 900)
     heights = variable_row_heights([landscape, portrait], cols=1, content_h=684.0)
     assert len(heights) == 2
     assert abs(sum(heights) - 684.0) < 1e-6
@@ -109,8 +113,8 @@ def test_variable_row_heights_sum_to_content_h():
 
 def test_variable_row_heights_fills_proportionally():
     """Portrait image should get a taller row than landscape."""
-    landscape = _img(1600, 900)   # aspect 1.78 → short row
-    portrait  = _img(600, 900)    # aspect 0.67 → tall row
+    landscape = _img(1600, 900)  # aspect 1.78 → short row
+    portrait = _img(600, 900)  # aspect 0.67 → tall row
     h_land, h_port = variable_row_heights([landscape, portrait], cols=1, content_h=684.0)
     assert h_port > h_land
 

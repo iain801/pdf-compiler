@@ -40,8 +40,7 @@ def test_outline_has_top_level_entries(report_pdf: Path):
         titles = [str(r.title) for r in ol.root]
         # We expect at least one bookmark from the title, ToC, and
         # markdown sections (combined, in some order).
-        assert any("Introduction" in t or "Part II" in t or "Financials" in t
-                    for t in titles)
+        assert any("Introduction" in t or "Part II" in t or "Financials" in t for t in titles)
 
 
 def test_named_destinations_installed(report_pdf: Path):
@@ -69,9 +68,8 @@ def test_internal_links_target_dests(report_pdf: Path):
             for annot in page.get("/Annots", []) or []:
                 if "/A" in annot and annot["/A"].get("/S") == pikepdf.Name.GoTo:
                     dest = annot["/A"].get("/D")
-                    if isinstance(dest, pikepdf.String):
-                        if str(dest) not in names_dict:
-                            broken.append(str(dest))
+                    if isinstance(dest, pikepdf.String) and str(dest) not in names_dict:
+                        broken.append(str(dest))
         # ToC link targets should resolve
         assert not broken, f"broken link destinations: {broken[:5]}"
 
@@ -122,8 +120,7 @@ def test_page_numbers_stamped(report_pdf: Path):
     with pdfplumber.open(report_pdf) as pdf:
         labels = []
         for page in pdf.pages:
-            words = [w["text"] for w in page.extract_words()
-                     if w["top"] > page.height - 50]
+            words = [w["text"] for w in page.extract_words() if w["top"] > page.height - 50]
             labels.append(words[-1] if words else "")
     # First two pages (title + ToC) are front matter (roman); body restarts at 1.
     assert labels[0] == "i"

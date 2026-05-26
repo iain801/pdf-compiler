@@ -5,11 +5,15 @@ metadata. Sections speak in *named destinations* (string keys), never in page
 numbers. Page numbers are resolved only during final assembly so the two-pass
 ToC needs no iteration.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
+
+if TYPE_CHECKING:
+    from pdf_compiler.context import BuildContext
 
 # Page indices in TocEntry/OutlineNode are LOCAL to the compiled section
 # (0-based, relative to the section's own PDF). Assembly remaps them to
@@ -20,10 +24,10 @@ from typing import Protocol
 class TocEntry:
     """One row in the table of contents."""
 
-    depth: int                # 1 = top-level, 2 = subheading, ...
+    depth: int  # 1 = top-level, 2 = subheading, ...
     label: str
-    dest_name: str            # unique across the whole document
-    local_page: int = 0       # 0-based index within the section's PDF
+    dest_name: str  # unique across the whole document
+    local_page: int = 0  # 0-based index within the section's PDF
 
 
 @dataclass(frozen=True, slots=True)
@@ -33,7 +37,7 @@ class OutlineNode:
     title: str
     dest_name: str
     local_page: int = 0
-    children: tuple["OutlineNode", ...] = ()
+    children: tuple[OutlineNode, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -53,5 +57,4 @@ class CompiledSection:
 class Section(Protocol):
     """Anything that knows how to compile itself to a CompiledSection."""
 
-    def compile(self, ctx: "BuildContext") -> CompiledSection:  # noqa: F821
-        ...
+    def compile(self, ctx: BuildContext) -> CompiledSection: ...

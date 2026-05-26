@@ -12,13 +12,12 @@ compiled, because we need their page counts. The pipeline therefore runs a
      contribution folded in.
   4. Render each ToC PDF with the resolved page labels.
 """
+
 from __future__ import annotations
 
 import math
 from dataclasses import dataclass
 from pathlib import Path
-
-import pikepdf
 
 import pikepdf
 
@@ -41,8 +40,8 @@ ENTRIES_PER_PAGE_HINT = 30
 class TocLayout:
     """Where the ToC sits in the final document and how many pages it takes."""
 
-    section_index: int          # index of the TocSection in spec.sections
-    page_count: int             # how many pages this ToC occupies
+    section_index: int  # index of the TocSection in spec.sections
+    page_count: int  # how many pages this ToC occupies
     front_matter: bool
 
 
@@ -67,7 +66,10 @@ def render_toc(
     """
     defaults = ctx.defaults
     rendered_entries = _entries_with_labels(
-        entries, spec.depth, defaults.page_numbering, front_matter_pages,
+        entries,
+        spec.depth,
+        defaults.page_numbering,
+        front_matter_pages,
     )
     render_to_pdf(
         "toc.html",
@@ -98,7 +100,10 @@ def render_subtoc_header(
     """Render a header page followed by a mini ToC of its scoped entries."""
     defaults = ctx.defaults
     rendered_entries = _entries_with_labels(
-        entries, spec.subtoc_depth, defaults.page_numbering, front_matter_pages,
+        entries,
+        spec.subtoc_depth,
+        defaults.page_numbering,
+        front_matter_pages,
     )
     body = interpolate(spec.body, ctx.vars, markdown=True)
     body_html = make_md().render(body) if body else None
@@ -139,12 +144,14 @@ def _entries_with_labels(
         else:
             body_idx = gp - last_fm
             label = format_page_number(body_idx, page_numbering.body, front=False)
-        out.append({
-            "depth": e.depth,
-            "label": e.label,
-            "dest_name": e.dest_name,
-            "page_label": label,
-        })
+        out.append(
+            {
+                "depth": e.depth,
+                "label": e.label,
+                "dest_name": e.dest_name,
+                "page_label": label,
+            }
+        )
     return out
 
 
@@ -161,6 +168,7 @@ def toc_compiled_section(
     spec title when the caller hasn't substituted variables.
     """
     from pdf_compiler.sections.base import OutlineNode
+
     label = title or spec.title
     dest = f"toc-{slugify(label)}"
     return CompiledSection(
@@ -183,15 +191,12 @@ def subtoc_header_compiled_section(
 ) -> CompiledSection:
     """Wrap a deferred-rendered subtoc header into a CompiledSection."""
     from pdf_compiler.sections.base import OutlineNode
+
     label = title or spec.title
     toc = (
-        (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),)
-        if spec.in_toc else ()
+        (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
     )
-    outline = (
-        (OutlineNode(title=label, dest_name=dest_name, local_page=0),)
-        if spec.in_toc else ()
-    )
+    outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
     return CompiledSection(
         pdf_path=pdf_path,
         page_count=page_count,
@@ -227,7 +232,6 @@ def _rewrite_toc_links(pdf_path: Path, entries: list[dict]) -> None:
         # Collect all Link annotations in top-to-bottom, page order.
         annots_ordered: list[pikepdf.Dictionary] = []
         for page in pdf.pages:
-            page_h = float(page.MediaBox[3]) - float(page.MediaBox[1])
             page_annots = []
             for annot in page.obj.get("/Annots", []):
                 if annot.get("/Subtype") != pikepdf.Name("/Link"):
@@ -244,7 +248,7 @@ def _rewrite_toc_links(pdf_path: Path, entries: list[dict]) -> None:
             # avoid corrupting annotations rather than silently mis-mapping.
             return
 
-        for annot, entry in zip(annots_ordered, entries):
+        for annot, entry in zip(annots_ordered, entries, strict=True):
             annot["/A"] = pikepdf.Dictionary(
                 Type=pikepdf.Name("/Action"),
                 S=pikepdf.Name("/GoTo"),

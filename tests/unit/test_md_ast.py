@@ -32,13 +32,17 @@ def test_first_h1_text_none():
 
 def test_max_depth_filter():
     _, hs = render_with_headings(
-        "# a\n\n## b\n\n### c\n\n#### d\n", id_prefix="s", max_depth=2,
+        "# a\n\n## b\n\n### c\n\n#### d\n",
+        id_prefix="s",
+        max_depth=2,
     )
+
     # Should drop ### and #### entirely (not as children either).
     def walk(h):
         yield h
         for c in h.children:
             yield from walk(c)
+
     levels = sorted({n.level for r in hs for n in walk(r)})
     assert levels == [1, 2]
 
@@ -52,12 +56,7 @@ def test_tree_handles_jump_levels():
 
 def test_gfm_pipe_tables_render():
     """| header | ... | should produce a <table>, not appear as literal pipes."""
-    md = (
-        "| Dates | Address |\n"
-        "|---|---|\n"
-        "| 2024 | 6629 Fathom Way |\n"
-        "| 2025 | 3380 20th St |\n"
-    )
+    md = "| Dates | Address |\n|---|---|\n| 2024 | 6629 Fathom Way |\n| 2025 | 3380 20th St |\n"
     html, _ = render_with_headings(md, id_prefix="s")
     assert "<table>" in html
     assert "<th>Dates</th>" in html

@@ -9,14 +9,15 @@ A section's cache key is a blake3 hash over:
 On a hit we copy the cached PDF to the working tmpdir; on a miss the caller
 compiles and calls :func:`put`.
 """
+
 from __future__ import annotations
 
 import json
 import os
 import shutil
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterable
 
 from blake3 import blake3
 
@@ -93,7 +94,7 @@ def hash_section(
     return h.hexdigest()
 
 
-def _hash_file_into(h: "blake3", path: Path) -> None:
+def _hash_file_into(h: blake3, path: Path) -> None:
     with path.open("rb") as fh:
         while chunk := fh.read(_HASH_CHUNK):
             h.update(chunk)

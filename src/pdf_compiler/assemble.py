@@ -8,6 +8,7 @@ That's how WeasyPrint emits internal HTML anchor links — so the ToC's
 ``<a href="#dest">`` links become clickable across the whole document for
 free.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
@@ -52,9 +53,7 @@ def assemble(
         with pikepdf.open(sec.pdf_path) as src:
             n = len(src.pages)
             if n != sec.page_count:
-                raise AssemblyError(
-                    f"{sec.pdf_path}: declared {sec.page_count} pages, found {n}"
-                )
+                raise AssemblyError(f"{sec.pdf_path}: declared {sec.page_count} pages, found {n}")
             combined.pages.extend(src.pages)
         for name, local in sec.destinations.items():
             if name in global_dests:
@@ -108,9 +107,7 @@ def _install_named_destinations(pdf: pikepdf.Pdf, dests: dict[str, int]) -> None
         page_idx = dests[name]
         page = pdf.pages[page_idx]
         # /XYZ with nulls means "preserve current zoom + position from top".
-        dest_array = pikepdf.Array(
-            [page.obj, pikepdf.Name("/XYZ"), null, null, null]
-        )
+        dest_array = pikepdf.Array([page.obj, pikepdf.Name("/XYZ"), null, null, null])
         pairs.append(pikepdf.String(name))
         pairs.append(dest_array)
     leaf = pikepdf.Dictionary(Names=pikepdf.Array(pairs))
@@ -161,11 +158,13 @@ def _stamp_page_numbers(
     across all pages by indirect reference, so the per-page overhead is one
     small content-stream object.
     """
-    font_obj = pdf.make_indirect(pikepdf.Dictionary(
-        Type=pikepdf.Name.Font,
-        Subtype=pikepdf.Name.Type1,
-        BaseFont=pikepdf.Name("/Helvetica"),
-    ))
+    font_obj = pdf.make_indirect(
+        pikepdf.Dictionary(
+            Type=pikepdf.Name.Font,
+            Subtype=pikepdf.Name.Type1,
+            BaseFont=pikepdf.Name("/Helvetica"),
+        )
+    )
     fm_counter = 0
     body_counter = 0
     for i, page in enumerate(pdf.pages):
@@ -226,11 +225,17 @@ def _stamp_page(
 
 
 def _pdf_string(s: str) -> str:
-    return "(" + s.translate({
-        ord("\\"): "\\\\",
-        ord("("): "\\(",
-        ord(")"): "\\)",
-    }) + ")"
+    return (
+        "("
+        + s.translate(
+            {
+                ord("\\"): "\\\\",
+                ord("("): "\\(",
+                ord(")"): "\\)",
+            }
+        )
+        + ")"
+    )
 
 
 def _install_metadata(pdf: pikepdf.Pdf, metadata: Metadata) -> None:

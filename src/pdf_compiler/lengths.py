@@ -4,6 +4,7 @@ WeasyPrint handles all in-template sizing via CSS. These helpers exist for
 the *post-render* steps (page-number stamping, page regularization) that
 work in PDF user space (points).
 """
+
 from __future__ import annotations
 
 from pdf_compiler.spec import PageSize
@@ -19,10 +20,10 @@ _UNIT_TO_PT: dict[str, float] = {
 
 # 1pt = 1/72 inch. ANSI / ISO standard sizes.
 PAGE_SIZE_PT: dict[PageSize, tuple[float, float]] = {
-    "letter":  (612.0,  792.0),
-    "legal":   (612.0, 1008.0),
-    "a4":      (595.276, 841.890),
-    "a5":      (419.528, 595.276),
+    "letter": (612.0, 792.0),
+    "legal": (612.0, 1008.0),
+    "a4": (595.276, 841.890),
+    "a5": (419.528, 595.276),
     "tabloid": (792.0, 1224.0),
 }
 

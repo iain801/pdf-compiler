@@ -1,8 +1,11 @@
 """Image gallery section."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
 from pathlib import Path
+
+from PIL import Image, ImageOps
 
 from pdf_compiler.cache import hash_section
 from pdf_compiler.context import BuildContext
@@ -43,21 +46,19 @@ class ImagesImpl:
         # Pre-process: apply EXIF transpose + user rotation, saving corrected
         # temp files only when a transformation is actually needed.
         prepared_paths = [
-            _prepare_image(p, r, ctx.tmpdir)
-            for p, r in zip(raw_paths, rotations)
+            _prepare_image(p, r, ctx.tmpdir) for p, r in zip(raw_paths, rotations, strict=True)
         ]
 
         # Use corrected dimensions for layout calculations.
         infos = [
             probe_image(p, c, rotate=r)
-            for p, c, r in zip(raw_paths, captions, rotations)
+            for p, c, r in zip(raw_paths, captions, rotations, strict=True)
         ]
 
         optimize = self.spec.optimize_packing
         use_variable_heights = self.spec.variable_heights or optimize
         layout_infos = (
-            sorted(infos, key=lambda img: img.aspect, reverse=True)
-            if optimize else infos
+            sorted(infos, key=lambda img: img.aspect, reverse=True) if optimize else infos
         )
 
         if self.spec.layout == "grid":
@@ -79,7 +80,7 @@ class ImagesImpl:
         # Map each ImageInfo back to its prepared path URL.
         prepared_url = {
             id(info): prepared.as_uri()
-            for info, prepared in zip(infos, prepared_paths)
+            for info, prepared in zip(infos, prepared_paths, strict=True)
         }
 
         template_pages = []
@@ -108,23 +109,27 @@ class ImagesImpl:
                 for c in range(cols):
                     idx = r * cols + c
                     if idx < len(cells_flat):
-                        row.append({
-                            **cells_flat[idx],
-                            "cell_h_pt": round(cell_h, 1),
-                            "img_h_pt": round(img_h, 1),
-                        })
+                        row.append(
+                            {
+                                **cells_flat[idx],
+                                "cell_h_pt": round(cell_h, 1),
+                                "img_h_pt": round(img_h, 1),
+                            }
+                        )
                     else:
                         row.append(None)
                 rows_data.append(row)
 
-            template_pages.append({
-                "rows_data": rows_data,
-                "rows": rows,
-                "cols": cols,
-                "caption_h_pt": round(_CAPTION_H_PT, 1),
-                # Uniform fallback for the non-optimize path (template can use either).
-                "cell_h_pt": round(content_h_pt / rows, 1),
-            })
+            template_pages.append(
+                {
+                    "rows_data": rows_data,
+                    "rows": rows,
+                    "cols": cols,
+                    "caption_h_pt": round(_CAPTION_H_PT, 1),
+                    # Uniform fallback for the non-optimize path (template can use either).
+                    "cell_h_pt": round(content_h_pt / rows, 1),
+                }
+            )
 
         key = hash_section(
             self.spec.model_dump(mode="json"),
@@ -157,15 +162,19 @@ class ImagesImpl:
         label = title or "Gallery"
         toc = (
             (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc else ()
+            if self.spec.in_toc
+            else ()
         )
         outline = (
             (OutlineNode(title=label, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc else ()
+            if self.spec.in_toc
+            else ()
         )
         return CompiledSection(
-            pdf_path=out, page_count=n,
-            toc_entries=toc, outline=outline,
+            pdf_path=out,
+            page_count=n,
+            toc_entries=toc,
+            outline=outline,
             destinations={dest_name: 0},
         )
 
@@ -174,8 +183,6 @@ def _prepare_image(path: Path, rotate: int, tmpdir: Path) -> Path:
     """Return path to an image with EXIF orientation corrected and user
     rotation applied.  Returns the original path unchanged when no
     transformation is needed so the cache stays efficient."""
-    from PIL import Image, ImageOps  # noqa: PLC0415
-
     with Image.open(path) as im:
         corrected = ImageOps.exif_transpose(im)
         changed = corrected.size != im.size or corrected.mode != im.mode

@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from pdf_compiler.page_range import PageRangeError, parse_page_range
 

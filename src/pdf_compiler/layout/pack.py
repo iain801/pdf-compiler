@@ -13,14 +13,16 @@ in CSS ``%`` of page-content area. The gallery template applies these via
 ``style="left:X%; top:Y%; width:W%; height:H%"`` for ``autopack`` and via
 ``grid-template-{rows,columns}`` for ``grid``.
 """
+
 from __future__ import annotations
 
+import contextlib
 import math
 from dataclasses import dataclass
 from itertools import batched
 from pathlib import Path
 
-from PIL import Image
+from PIL import Image, ImageOps
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,12 +59,9 @@ class Page:
 
 def probe_image(path: Path, caption: str | None = None, *, rotate: int = 0) -> ImageInfo:
     """Return image info with corrected dimensions (EXIF + user rotation applied)."""
-    from PIL import ImageOps  # noqa: PLC0415
     with Image.open(path) as im:
-        try:
+        with contextlib.suppress(OSError, ValueError):
             im = ImageOps.exif_transpose(im)
-        except Exception:  # noqa: BLE001
-            pass
         w, h = im.size
     if rotate in (90, 270):
         w, h = h, w
@@ -103,11 +102,8 @@ def grid_layout(images: list[ImageInfo], per_page: int) -> list[Page]:
     cols = max(1, round(math.sqrt(per_page)))
     rows = math.ceil(per_page / cols)
     pages: list[Page] = []
-    for chunk in batched(images, per_page):
-        cells = tuple(
-            Cell(image=img, row=i // cols, col=i % cols)
-            for i, img in enumerate(chunk)
-        )
+    for chunk in batched(images, per_page, strict=False):
+        cells = tuple(Cell(image=img, row=i // cols, col=i % cols) for i, img in enumerate(chunk))
         pages.append(Page(cells=cells, rows=rows, cols=cols))
     return pages
 
@@ -166,17 +162,17 @@ def autopack_layout(
         for img in r:
             w = img.aspect * h / page_aspect  # convert h→x-units via page_aspect
             # Express in %:
-            cur_cells.append(Cell(
-                image=img,
-                left_pct=x * 100.0 / page_aspect,
-                top_pct=y * 100.0,
-                width_pct=w * 100.0,
-                height_pct=h * 100.0,
-            ))
+            cur_cells.append(
+                Cell(
+                    image=img,
+                    left_pct=x * 100.0 / page_aspect,
+                    top_pct=y * 100.0,
+                    width_pct=w * 100.0,
+                    height_pct=h * 100.0,
+                )
+            )
             x += w * page_aspect  # advance in x-units (same as left_pct space)
         y += h
     if cur_cells:
         pages.append(Page(cells=tuple(cur_cells)))
     return pages
-
-

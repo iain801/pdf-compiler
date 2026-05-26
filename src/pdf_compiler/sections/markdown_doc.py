@@ -1,4 +1,5 @@
 """Markdown section: compile a .md file to PDF with heading-based ToC entries."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -77,19 +78,28 @@ class MarkdownImpl:
             if walk and walk[0].level == 1 and walk[0].text == title:
                 walk = walk[1:]
             for h in walk:
-                toc_entries.append(TocEntry(
-                    depth=h.level, label=h.text, dest_name=h.anchor_id, local_page=0,
-                ))
+                toc_entries.append(
+                    TocEntry(
+                        depth=h.level,
+                        label=h.text,
+                        dest_name=h.anchor_id,
+                        local_page=0,
+                    )
+                )
                 destinations.setdefault(h.anchor_id, 0)
             outline[0] = OutlineNode(
-                title=title, dest_name=section_dest, local_page=0,
+                title=title,
+                dest_name=section_dest,
+                local_page=0,
                 children=_to_outline(headings, skip_first_h1_titled=title),
             )
 
         from pdf_compiler.sections._common import page_count_of
+
         n = page_count_of(out)
         return CompiledSection(
-            pdf_path=out, page_count=n,
+            pdf_path=out,
+            page_count=n,
             toc_entries=tuple(toc_entries),
             outline=tuple(outline),
             destinations=destinations,
@@ -109,8 +119,12 @@ def _to_outline(hs: list[Heading], *, skip_first_h1_titled: str | None) -> tuple
             # Hoist its children up so we don't lose them.
             out.extend(_to_outline(h.children, skip_first_h1_titled=None))
             continue
-        out.append(OutlineNode(
-            title=h.text, dest_name=h.anchor_id, local_page=0,
-            children=_to_outline(h.children, skip_first_h1_titled=None),
-        ))
+        out.append(
+            OutlineNode(
+                title=h.text,
+                dest_name=h.anchor_id,
+                local_page=0,
+                children=_to_outline(h.children, skip_first_h1_titled=None),
+            )
+        )
     return tuple(out)

@@ -1,4 +1,5 @@
 """Header / divider section: a centered title page with optional markdown body."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -58,5 +59,8 @@ class HeaderImpl:
         else:
             out = cached
         return simple_compiled_section(
-            out, dest_name=dest_name, label=title, in_toc=self.spec.in_toc,
+            out,
+            dest_name=dest_name,
+            label=title,
+            in_toc=self.spec.in_toc,
         )

@@ -11,6 +11,7 @@ Rules:
   - Duplicate / overlapping pages are preserved in the order they appear,
     because users sometimes legitimately want to repeat a page.
 """
+
 from __future__ import annotations
 
 
@@ -43,9 +44,7 @@ def parse_page_range(expr: str | None, total_pages: int) -> list[int]:
         if lo > hi:
             raise PageRangeError(f"reversed range {tok!r} (start > end)")
         if hi > total_pages:
-            raise PageRangeError(
-                f"page {hi} out of range (document has {total_pages} pages)"
-            )
+            raise PageRangeError(f"page {hi} out of range (document has {total_pages} pages)")
         result.extend(range(lo - 1, hi))
     return result
 

@@ -1,4 +1,5 @@
 """Orchestration stub — full implementation lands in task #8."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -18,8 +19,8 @@ def compile_spec(
     jobs: int = 0,
     use_cache: bool = True,
 ) -> CompileResult:
-    from pdf_compiler.loader import load_spec
     from pdf_compiler.context import build_context
+    from pdf_compiler.loader import load_spec
     from pdf_compiler.pipeline_impl import run_pipeline
 
     spec = load_spec(spec_path)
@@ -30,7 +31,7 @@ def compile_spec(
 
 
 def validate_spec(spec_path: Path) -> list[str]:
-    from pdf_compiler.loader import load_spec, SpecError
+    from pdf_compiler.loader import SpecError, load_spec
     from pdf_compiler.validate import validate_inputs
 
     try:

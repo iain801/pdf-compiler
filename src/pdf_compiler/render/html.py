@@ -7,6 +7,7 @@ hand the HTML to WeasyPrint, write a PDF to disk.
 WeasyPrint is imported lazily because it pulls in cairo/pango at import time
 and we want fast `--help` / `validate`.
 """
+
 from __future__ import annotations
 
 from functools import lru_cache

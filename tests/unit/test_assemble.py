@@ -27,7 +27,8 @@ def test_concatenates_pages(tmp_path, make_pdf):
 def test_installs_named_destinations(tmp_path, make_pdf):
     p = make_pdf(3, "x.pdf")
     sec = _section(
-        p, 3,
+        p,
+        3,
         destinations={"intro": 0, "middle": 1, "end": 2},
     )
     out = tmp_path / "out.pdf"
@@ -65,11 +66,15 @@ def test_page_count_mismatch_raises(tmp_path, make_pdf):
 def test_outline_built(tmp_path, make_pdf):
     p = make_pdf(3, "x.pdf")
     sec = _section(
-        p, 3,
+        p,
+        3,
         outline=(
-            OutlineNode("Chapter 1", "ch1", local_page=0, children=(
-                OutlineNode("Section 1.1", "ch1.1", local_page=1),
-            )),
+            OutlineNode(
+                "Chapter 1",
+                "ch1",
+                local_page=0,
+                children=(OutlineNode("Section 1.1", "ch1.1", local_page=1),),
+            ),
             OutlineNode("Chapter 2", "ch2", local_page=2),
         ),
     )
@@ -85,9 +90,9 @@ def test_metadata_written(tmp_path, make_pdf):
     sec = _section(make_pdf(1, "x.pdf"), 1)
     out = tmp_path / "out.pdf"
     assemble(
-        [sec], out,
-        Metadata(title="Hello", author="Tester", subject="Stuff",
-                 keywords=("a", "b")),
+        [sec],
+        out,
+        Metadata(title="Hello", author="Tester", subject="Stuff", keywords=("a", "b")),
     )
     with pikepdf.open(out) as pdf:
         info = pdf.docinfo
@@ -110,15 +115,16 @@ def test_page_numbers_stamped_when_enabled(tmp_path, make_pdf):
     body = _section(make_pdf(3, "body.pdf"), 3)
     out = tmp_path / "out.pdf"
     assemble(
-        [front, body], out, Metadata(),
+        [front, body],
+        out,
+        Metadata(),
         page_numbering=PageNumbering(enabled=True),
         margin="0.5in",
     )
     with pdfplumber.open(out) as pdf:
         labels = []
         for page in pdf.pages:
-            words = [w["text"] for w in page.extract_words()
-                     if w["top"] > page.height - 50]
+            words = [w["text"] for w in page.extract_words() if w["top"] > page.height - 50]
             labels.append(words[-1] if words else "")
     # Front-matter pages get roman; body pages restart at arabic 1.
     assert labels == ["i", "ii", "1", "2", "3"]
@@ -143,14 +149,15 @@ def test_page_numbers_position_right(tmp_path, make_pdf):
     sec = _section(make_pdf(1, "x.pdf"), 1)
     out = tmp_path / "out.pdf"
     assemble(
-        [sec], out, Metadata(),
+        [sec],
+        out,
+        Metadata(),
         page_numbering=PageNumbering(enabled=True, position="bottom-right"),
         margin="0.5in",
     )
     with pdfplumber.open(out) as pdf:
         page = pdf.pages[0]
-        words = [w for w in page.extract_words()
-                 if w["top"] > page.height - 50]
+        words = [w for w in page.extract_words() if w["top"] > page.height - 50]
         assert words, "expected a page-number stamp"
         # Right-aligned: word's x sits past the page midline.
         assert words[-1]["x0"] > page.width / 2
@@ -158,11 +165,13 @@ def test_page_numbers_position_right(tmp_path, make_pdf):
 
 def test_toc_destinations_tracked(tmp_path, make_pdf):
     a = _section(
-        make_pdf(3, "a.pdf"), 3,
+        make_pdf(3, "a.pdf"),
+        3,
         toc_entries=(TocEntry(1, "Intro", "intro-anchor", local_page=0),),
     )
     b = _section(
-        make_pdf(2, "b.pdf"), 2,
+        make_pdf(2, "b.pdf"),
+        2,
         toc_entries=(TocEntry(1, "End", "end-anchor", local_page=1),),
     )
     r = assemble([a, b], tmp_path / "out.pdf", Metadata())

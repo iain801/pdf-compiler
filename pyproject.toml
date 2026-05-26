@@ -74,6 +74,9 @@ target-version = "py314"
 select = ["E", "F", "I", "UP", "B", "SIM"]
 ignore = ["E501"]
 
+[tool.ruff.lint.per-file-ignores]
+"src/pdf_compiler/cli.py" = ["B008"]  # typer.Argument/Option are used as defaults by design
+
 [tool.coverage.run]
 source = ["src/pdf_compiler"]
 branch = true

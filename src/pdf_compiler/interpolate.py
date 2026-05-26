@@ -6,6 +6,7 @@ set of builtins (today, year, etc.). Unknown names pass through unchanged
 so existing documents that happen to contain ``{{...}}`` are not broken
 by the feature.
 """
+
 from __future__ import annotations
 
 import datetime as _dt

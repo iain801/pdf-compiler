@@ -13,6 +13,7 @@ Resolution rules per field:
            |  else metadata.date if metadata set it (None disables)
            |  else today's date
 """
+
 from __future__ import annotations
 
 import datetime as _dt
@@ -82,8 +83,11 @@ class TitleImpl:
         else:
             out = cached
         return simple_compiled_section(
-            out, dest_name=dest_name, label=resolved_title,
-            in_toc=self.spec.in_toc, front_matter=self.spec.front_matter,
+            out,
+            dest_name=dest_name,
+            label=resolved_title,
+            in_toc=self.spec.in_toc,
+            front_matter=self.spec.front_matter,
         )
 
 
@@ -97,8 +101,7 @@ def _resolve_title(spec: TitleSection, metadata: Metadata) -> str:
     if metadata.title is not None:
         return metadata.title
     raise ValueError(
-        "title section: no title provided "
-        "(set the section's `title` or `metadata.title`)"
+        "title section: no title provided (set the section's `title` or `metadata.title`)"
     )
 
 
@@ -125,5 +128,3 @@ def _resolve_date(spec: TitleSection, metadata: Metadata) -> str | None:
     if isinstance(d, str):
         return d
     return d.isoformat()
-
-

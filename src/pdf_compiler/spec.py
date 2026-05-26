@@ -3,11 +3,12 @@
 The :class:`Spec` is the root model. Sections are tagged by their ``type`` field;
 pydantic dispatches to the correct subclass automatically.
 """
+
 from __future__ import annotations
 
 import datetime as _dt
 from pathlib import Path
-from typing import Annotated, Literal, Union
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
@@ -19,8 +20,12 @@ class _Strict(BaseModel):
 PageSize = Literal["letter", "legal", "a4", "a5", "tabloid"]
 NumberingStyle = Literal["arabic", "roman", "none"]
 NumberingPosition = Literal[
-    "bottom-center", "bottom-left", "bottom-right",
-    "top-center", "top-left", "top-right",
+    "bottom-center",
+    "bottom-left",
+    "bottom-right",
+    "top-center",
+    "top-left",
+    "top-right",
 ]
 CaptionPlacement = Literal["below", "above", "overlay", "none"]
 GalleryLayout = Literal["grid", "autopack"]
@@ -142,14 +147,7 @@ class ImagesSection(_Strict):
 
 
 SectionUnion = Annotated[
-    Union[
-        TitleSection,
-        TocSection,
-        HeaderSection,
-        MarkdownSection,
-        PdfSection,
-        ImagesSection,
-    ],
+    TitleSection | TocSection | HeaderSection | MarkdownSection | PdfSection | ImagesSection,
     Field(discriminator="type"),
 ]
 

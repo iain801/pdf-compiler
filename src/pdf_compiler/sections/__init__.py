@@ -1,4 +1,5 @@
 """Section registry — maps each spec section type to an impl."""
+
 from __future__ import annotations
 
 from pdf_compiler.sections._common import SectionMeta
@@ -28,18 +29,23 @@ def impl_for(spec_section, index: int, defaults: Defaults):
     meta = SectionMeta(index=index, defaults=defaults)
     if isinstance(spec_section, TitleSection):
         from pdf_compiler.sections.title import TitleImpl
+
         return TitleImpl(spec=spec_section, meta=meta)
     if isinstance(spec_section, HeaderSection):
         from pdf_compiler.sections.header import HeaderImpl
+
         return HeaderImpl(spec=spec_section, meta=meta)
     if isinstance(spec_section, MarkdownSection):
         from pdf_compiler.sections.markdown_doc import MarkdownImpl
+
         return MarkdownImpl(spec=spec_section, meta=meta)
     if isinstance(spec_section, PdfSection):
         from pdf_compiler.sections.pdf_ref import PdfRefImpl
+
         return PdfRefImpl(spec=spec_section, meta=meta)
     if isinstance(spec_section, ImagesSection):
         from pdf_compiler.sections.images import ImagesImpl
+
         return ImagesImpl(spec=spec_section, meta=meta)
     if isinstance(spec_section, TocSection):
         return None  # rendered separately, see pipeline_impl

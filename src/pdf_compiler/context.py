@@ -3,6 +3,7 @@
 Holds: project root (for resolving relative paths), defaults, cache, tmpdir,
 worker count, version. Immutable. Passed by value into worker processes.
 """
+
 from __future__ import annotations
 
 import os
@@ -17,7 +18,7 @@ from pdf_compiler.spec import Defaults, Metadata, Spec
 
 @dataclass(frozen=True, slots=True)
 class BuildContext:
-    project_root: Path           # directory of the spec file
+    project_root: Path  # directory of the spec file
     defaults: Defaults
     metadata: Metadata
     cache: Cache

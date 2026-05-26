@@ -1,4 +1,5 @@
 """End-to-end-ish tests of each section impl producing a temp PDF."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,13 +37,18 @@ def _ctx(
     metadata = metadata or Metadata()
     spec = Spec(
         sections=(TitleSection(title="x"),),
-        defaults=defaults, metadata=metadata,
+        defaults=defaults,
+        metadata=metadata,
         vars=vars or {},
     )
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text("# placeholder")
     return build_context(
-        spec_path, spec, jobs=1, use_cache=False, tmpdir=tmp_path / "tmp",
+        spec_path,
+        spec,
+        jobs=1,
+        use_cache=False,
+        tmpdir=tmp_path / "tmp",
     )
 
 
@@ -116,8 +122,7 @@ def test_pdf_section_regularize_normalizes_page_size(tmp_path: Path, make_pdf):
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
     with pikepdf.open(cs.pdf_path) as pdf:
         sizes = {
-            (round(float(p.MediaBox[2]), 1), round(float(p.MediaBox[3]), 1))
-            for p in pdf.pages
+            (round(float(p.MediaBox[2]), 1), round(float(p.MediaBox[3]), 1)) for p in pdf.pages
         }
     assert sizes == {(612.0, 792.0)}
 
@@ -149,6 +154,7 @@ def test_pdf_section_regularize_section_override(tmp_path: Path, make_pdf):
 def test_images_section_grid(tmp_path: Path):
     pytest.importorskip("PIL")
     from PIL import Image
+
     paths = []
     for i in range(5):
         p = tmp_path / f"img{i}.png"
@@ -156,7 +162,9 @@ def test_images_section_grid(tmp_path: Path):
         paths.append(p)
     ctx = _ctx(tmp_path)
     s = ImagesSection(
-        title="Gallery", per_page=4, layout="grid",
+        title="Gallery",
+        per_page=4,
+        layout="grid",
         images=tuple(ImageItem(path=p, caption=f"img {i}") for i, p in enumerate(paths)),
     )
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
@@ -167,6 +175,7 @@ def test_images_section_grid(tmp_path: Path):
 def _make_imgs(tmp_path: Path, sizes: list[tuple[int, int]]) -> list[Path]:
     """Create small PNG test images with the given (width, height) sizes."""
     from PIL import Image
+
     paths = []
     for i, (w, h) in enumerate(sizes):
         p = tmp_path / f"img{i}_{w}x{h}.png"
@@ -183,7 +192,9 @@ def test_variable_heights_fills_page(tmp_path: Path):
     paths = _make_imgs(tmp_path, [(400, 100), (100, 400)])
     ctx = _ctx(tmp_path)
     s = ImagesSection(
-        per_page=2, layout="grid", variable_heights=True,
+        per_page=2,
+        layout="grid",
+        variable_heights=True,
         images=tuple(ImageItem(path=p) for p in paths),
     )
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
@@ -199,7 +210,9 @@ def test_optimize_packing_reorders_by_aspect(tmp_path: Path):
     paths = _make_imgs(tmp_path, [(100, 400), (100, 100), (400, 100)])
     ctx = _ctx(tmp_path)
     s = ImagesSection(
-        per_page=3, layout="grid", optimize_packing=True,
+        per_page=3,
+        layout="grid",
+        optimize_packing=True,
         images=tuple(ImageItem(path=p) for p in paths),
     )
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
@@ -211,8 +224,7 @@ def test_optimize_packing_produces_same_page_count_as_variable_heights(tmp_path:
     pytest.importorskip("PIL")
     paths = _make_imgs(tmp_path, [(400, 100), (100, 400), (200, 100), (100, 200)])
     ctx = _ctx(tmp_path)
-    base = dict(per_page=2, layout="grid",
-                images=tuple(ImageItem(path=p) for p in paths))
+    base = dict(per_page=2, layout="grid", images=tuple(ImageItem(path=p) for p in paths))
     cs_vh = impl_for(ImagesSection(**base, variable_heights=True), 0, ctx.defaults).compile(ctx)
     cs_op = impl_for(ImagesSection(**base, optimize_packing=True), 0, ctx.defaults).compile(ctx)
     # Both use variable heights; both should produce the same page count.
@@ -223,11 +235,13 @@ def test_image_rotation_field_accepted(tmp_path: Path):
     """rotate: 90 on an ImageItem should not crash and should produce output."""
     pytest.importorskip("PIL")
     from PIL import Image
+
     p = tmp_path / "photo.jpg"
     Image.new("RGB", (300, 400)).save(p)
     ctx = _ctx(tmp_path)
     s = ImagesSection(
-        per_page=1, layout="grid",
+        per_page=1,
+        layout="grid",
         images=(ImageItem(path=p, caption="rotated", rotate=90),),
     )
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
@@ -244,8 +258,12 @@ def test_section_caches_output(tmp_path: Path):
     spec_path = tmp_path / "spec.yaml"
     spec_path.write_text("")
     ctx = build_context(
-        spec_path, spec, jobs=1, use_cache=True,
-        cache_dir=cache_dir, tmpdir=tmp_path / "tmp",
+        spec_path,
+        spec,
+        jobs=1,
+        use_cache=True,
+        cache_dir=cache_dir,
+        tmpdir=tmp_path / "tmp",
     )
 
     s = MarkdownSection(path=Path("doc.md"))
@@ -298,6 +316,7 @@ def test_title_missing_everywhere_errors():
 
 def test_date_defaults_to_today_when_unset_everywhere():
     import datetime as dt
+
     md = Metadata(title="T")  # no date
     s = TitleSection(title="x")  # no date
     assert _resolve_date(s, md) == dt.date.today().isoformat()
@@ -305,6 +324,7 @@ def test_date_defaults_to_today_when_unset_everywhere():
 
 def test_date_inherits_from_metadata():
     import datetime as dt
+
     d = dt.date(2024, 1, 2)
     md = Metadata(title="T", date=d)
     s = TitleSection(title="x")
@@ -313,6 +333,7 @@ def test_date_inherits_from_metadata():
 
 def test_date_section_overrides_metadata():
     import datetime as dt
+
     md = Metadata(title="T", date=dt.date(2024, 1, 2))
     s = TitleSection(title="x", date=dt.date(2030, 12, 31))
     assert _resolve_date(s, md) == "2030-12-31"
@@ -320,6 +341,7 @@ def test_date_section_overrides_metadata():
 
 def test_date_none_on_section_disables():
     import datetime as dt
+
     md = Metadata(title="T", date=dt.date(2024, 1, 2))
     s = TitleSection(title="x", date=None)
     # Explicit `date: none` on the section disables even if metadata has one.
@@ -328,7 +350,7 @@ def test_date_none_on_section_disables():
 
 def test_date_none_on_metadata_disables_when_section_unset():
     md = Metadata(title="T", date=None)  # explicit None
-    s = TitleSection(title="x")           # field not set
+    s = TitleSection(title="x")  # field not set
     assert _resolve_date(s, md) is None
 
 
@@ -345,11 +367,7 @@ def test_title_section_uses_metadata_via_yaml_loader(tmp_path: Path):
 
     p = tmp_path / "spec.yaml"
     p.write_text(
-        "metadata:\n"
-        "  title: From Meta\n"
-        "  author: Meta Author\n"
-        "sections:\n"
-        "  - type: title\n"
+        "metadata:\n  title: From Meta\n  author: Meta Author\nsections:\n  - type: title\n"
     )
     spec = load_spec(p)
     title_spec = spec.sections[0]
@@ -382,6 +400,7 @@ def test_markdown_section_interpolates_body(tmp_path: Path):
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
     # Page text should contain the substituted name, not the {{}} literal.
     from pdfminer.high_level import extract_text
+
     text = extract_text(str(cs.pdf_path))
     assert "Jane" in text
     assert "{{who}}" not in text
@@ -395,17 +414,20 @@ def test_markdown_unknown_var_is_passthrough(tmp_path: Path):
     s = MarkdownSection(path=Path("doc.md"))
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
     from pdfminer.high_level import extract_text
+
     text = extract_text(str(cs.pdf_path))
     assert "{{nothere}}" in text
 
 
 def test_builtin_today_var_available(tmp_path: Path):
     import datetime as dt
+
     ctx = _ctx(tmp_path)  # no user vars at all
     s = TitleSection(title="On {{today}}")
     cs = impl_for(s, 0, ctx.defaults).compile(ctx)
     today = dt.date.today().isoformat()
     from pdfminer.high_level import extract_text
+
     text = extract_text(str(cs.pdf_path))
     assert today in text
 
@@ -416,11 +438,7 @@ def test_date_none_via_yaml(tmp_path: Path):
 
     p = tmp_path / "spec.yaml"
     p.write_text(
-        "metadata:\n"
-        "  title: T\n"
-        "sections:\n"
-        "  - type: title\n"
-        "    date: ~\n"  # YAML null
+        "metadata:\n  title: T\nsections:\n  - type: title\n    date: ~\n"  # YAML null
     )
     spec = load_spec(p)
     title_spec = spec.sections[0]

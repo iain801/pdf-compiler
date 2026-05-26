@@ -1,5 +1,6 @@
 """Embed pages from an existing PDF, with optional page-range selection,
 rotation, outline preservation, and page-size regularization."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -73,16 +74,23 @@ class PdfRefImpl:
         n_pages = len(indices)
         toc = (
             (TocEntry(depth=1, label=title, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc else ()
+            if self.spec.in_toc
+            else ()
         )
         outline = (
-            (OutlineNode(title=title, dest_name=dest_name, local_page=0,
-                          children=outline_children),)
-            if self.spec.in_toc else outline_children
+            (
+                OutlineNode(
+                    title=title, dest_name=dest_name, local_page=0, children=outline_children
+                ),
+            )
+            if self.spec.in_toc
+            else outline_children
         )
         return CompiledSection(
-            pdf_path=out_path, page_count=n_pages,
-            toc_entries=toc, outline=outline,
+            pdf_path=out_path,
+            page_count=n_pages,
+            toc_entries=toc,
+            outline=outline,
             destinations={dest_name: 0},
         )
 
@@ -111,12 +119,14 @@ def _convert_outline(items, src, local_for_src, prefix, *, counter):
             continue
         counter[0] += 1
         anchor = f"{prefix}-bm-{counter[0]:04d}"
-        out.append(OutlineNode(
-            title=str(item.title) if item.title else "",
-            dest_name=anchor,
-            local_page=local_for_src[src_page_idx],
-            children=tuple(children),
-        ))
+        out.append(
+            OutlineNode(
+                title=str(item.title) if item.title else "",
+                dest_name=anchor,
+                local_page=local_for_src[src_page_idx],
+                children=tuple(children),
+            )
+        )
     return tuple(out)
 
 

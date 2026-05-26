@@ -1,4 +1,5 @@
 """Bits shared across section implementations."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -27,6 +28,7 @@ def dest_prefix(meta: SectionMeta | int) -> str:
 
 def page_count_of(pdf_path: Path | str) -> int:
     import pikepdf
+
     with pikepdf.open(pdf_path) as p:
         return len(p.pages)
 
@@ -50,8 +52,10 @@ def simple_compiled_section(
     toc = (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if in_toc else ()
     outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if in_toc else ()
     return CompiledSection(
-        pdf_path=pdf_path, page_count=n,
-        toc_entries=toc, outline=outline,
+        pdf_path=pdf_path,
+        page_count=n,
+        toc_entries=toc,
+        outline=outline,
         front_matter=front_matter,
         destinations={dest_name: 0},
     )

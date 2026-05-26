@@ -1,10 +1,10 @@
 """Tests for ToC clickable link annotations."""
+
 from __future__ import annotations
 
 from pathlib import Path
 
 import pikepdf
-import pytest
 
 from pdf_compiler.context import build_context
 from pdf_compiler.sections.base import TocEntry
@@ -48,29 +48,38 @@ def _link_dests(pdf_path: Path) -> list[str]:
 
 
 def test_toc_emits_link_annotations(tmp_path):
-    out = _render_toc(tmp_path, [
-        (1, "Chapter 1", "sec-0001-top", 2),
-        (2, "Section 1.1", "sec-0002-h2-intro", 4),
-    ])
+    out = _render_toc(
+        tmp_path,
+        [
+            (1, "Chapter 1", "sec-0001-top", 2),
+            (2, "Section 1.1", "sec-0002-h2-intro", 4),
+        ],
+    )
     dests = _link_dests(out)
     assert len(dests) == 2
 
 
 def test_toc_links_point_to_content_destinations(tmp_path):
-    out = _render_toc(tmp_path, [
-        (1, "Chapter 1", "sec-0001-top", 2),
-        (2, "Section 1.1", "sec-0002-h2-intro", 4),
-        (1, "Chapter 2", "sec-0003-top", 10),
-    ])
+    out = _render_toc(
+        tmp_path,
+        [
+            (1, "Chapter 1", "sec-0001-top", 2),
+            (2, "Section 1.1", "sec-0002-h2-intro", 4),
+            (1, "Chapter 2", "sec-0003-top", 10),
+        ],
+    )
     dests = _link_dests(out)
     assert dests == ["sec-0001-top", "sec-0002-h2-intro", "sec-0003-top"]
 
 
 def test_toc_links_not_self_referential(tmp_path):
     """Links must not point back to the ToC page — they must point to content."""
-    out = _render_toc(tmp_path, [
-        (1, "Intro", "sec-0001-top", 1),
-    ])
+    out = _render_toc(
+        tmp_path,
+        [
+            (1, "Intro", "sec-0001-top", 1),
+        ],
+    )
     dests = _link_dests(out)
     assert dests == ["sec-0001-top"]
     # Verify the annotation action is GoTo, not a local dest array.

@@ -1,4 +1,5 @@
 """Tests for the ``{{name}}`` variable substitution."""
+
 from __future__ import annotations
 
 import datetime as _dt

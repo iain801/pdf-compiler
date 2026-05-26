@@ -1,4 +1,5 @@
 """Standalone spec validation: check every referenced file exists and is usable."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -23,7 +24,7 @@ def validate_inputs(spec: Spec, project_root: Path) -> list[str]:
             p = _resolve(project_root, sec.path)
             if not p.is_file():
                 problems.append(f"section {i}: markdown file not found: {p}")
-            elif not p.suffix.lower() in {".md", ".markdown", ".txt"}:
+            elif p.suffix.lower() not in {".md", ".markdown", ".txt"}:
                 problems.append(f"section {i}: not a markdown file: {p}")
         elif isinstance(sec, PdfSection):
             p = _resolve(project_root, sec.path)
@@ -38,7 +39,7 @@ def validate_inputs(spec: Spec, project_root: Path) -> list[str]:
                             parse_page_range(sec.pages, n)
                         except PageRangeError as e:
                             problems.append(f"section {i}: {e}")
-                except Exception as e:  # noqa: BLE001
+                except (pikepdf.PdfError, OSError) as e:
                     problems.append(f"section {i}: cannot open PDF {p}: {e}")
         elif isinstance(sec, ImagesSection):
             for j, img in enumerate(sec.images):
