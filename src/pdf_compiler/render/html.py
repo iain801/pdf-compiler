@@ -15,7 +15,30 @@ from pathlib import Path
 
 import jinja2
 
+from pdf_compiler.util import css_font_family
+
 TEMPLATE_DIR = Path(__file__).parent / "templates"
+
+
+def root_vars(
+    page_size: str,
+    margin: str,
+    *,
+    font_family: str | None = None,
+    font_size: str | None = None,
+) -> str:
+    """Build the inline ``:root`` declaration consumed by every template.
+
+    Variables that aren't set are omitted so base.css's ``var(..., default)``
+    fallback kicks in. Keeps the per-template Jinja noise to a single field.
+    """
+    parts = [f"--page-size: {page_size};", f"--margin: {margin};"]
+    family = css_font_family(font_family)
+    if family:
+        parts.append(f"--body-font: {family};")
+    if font_size:
+        parts.append(f"--body-font-size: {font_size};")
+    return ":root { " + " ".join(parts) + " }"
 
 
 @lru_cache(maxsize=1)
@@ -34,7 +57,13 @@ def _base_css() -> str:
 
 def render_html(template: str, context: dict) -> str:
     env = _env()
-    ctx = {**context, "base_css": _base_css()}
+    style = root_vars(
+        context.get("page_size", "letter"),
+        context.get("margin", "0.75in"),
+        font_family=context.get("font_family"),
+        font_size=context.get("font_size"),
+    )
+    ctx = {**context, "base_css": _base_css(), "root_style": style}
     return env.get_template(template).render(**ctx)
 
 

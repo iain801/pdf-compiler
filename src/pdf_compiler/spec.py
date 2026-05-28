@@ -57,6 +57,15 @@ class Defaults(_Strict):
     # Whether embedded PDF outlines are preserved as nested ToC/outline
     # entries by default.
     preserve_bookmarks: bool = True
+    # Body text font family — a CSS font-family value. Single names like
+    # "Times New Roman" need no extra quoting in YAML; comma-separated
+    # stacks pass through verbatim. None = use the built-in default
+    # (Helvetica/Arial). Fonts must be installed on the rendering host;
+    # WeasyPrint resolves names via fontconfig (Linux) / Core Text (macOS).
+    font_family: str | None = None
+    # Body text size as a CSS length (e.g. "11pt", "12pt", "1.05em").
+    # None = use the built-in default of 11pt.
+    font_size: str | None = None
 
 
 class Metadata(_Strict):
@@ -113,6 +122,8 @@ class MarkdownSection(_Strict):
     path: Path
     title: str | None = None  # else taken from first H1
     index_headers: bool | None = None  # None → inherit from defaults
+    font_family: str | None = None  # None → inherit Defaults.font_family
+    font_size: str | None = None  # None → inherit Defaults.font_size
 
 
 class PdfSection(_Strict):

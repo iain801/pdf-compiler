@@ -54,3 +54,61 @@ def test_strict_undefined():
         pass
     else:
         raise AssertionError("expected StrictUndefined to raise")
+
+
+def test_font_family_injected_as_css_var():
+    """A single name gets auto-quoted as a CSS string."""
+    html = render_html(
+        "title.html",
+        {
+            "title": "X",
+            "subtitle": None,
+            "author": None,
+            "date": None,
+            "page_size": "letter",
+            "margin": "0.75in",
+            "font_family": "Times New Roman",
+        },
+    )
+    assert '--body-font: "Times New Roman";' in html
+
+
+def test_font_stack_passes_through_unquoted():
+    """A comma-separated stack is treated as ready CSS."""
+    html = render_html(
+        "title.html",
+        {
+            "title": "X",
+            "subtitle": None,
+            "author": None,
+            "date": None,
+            "page_size": "letter",
+            "margin": "0.75in",
+            "font_family": '"Calibri", Arial, sans-serif',
+        },
+    )
+    assert '--body-font: "Calibri", Arial, sans-serif;' in html
+
+
+def test_font_size_injected_as_css_var():
+    html = render_html(
+        "title.html",
+        {
+            "title": "X",
+            "subtitle": None,
+            "author": None,
+            "date": None,
+            "page_size": "letter",
+            "margin": "0.75in",
+            "font_size": "13pt",
+        },
+    )
+    assert "--body-font-size: 13pt;" in html
+
+
+def test_no_font_vars_means_no_extra_css():
+    """When font fields are absent, the :root declaration omits them entirely."""
+    from pdf_compiler.render.html import root_vars
+
+    style = root_vars("letter", "0.75in")
+    assert "--body-font" not in style

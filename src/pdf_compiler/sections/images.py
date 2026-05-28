@@ -150,6 +150,8 @@ class ImagesImpl:
                     "gallery_css": "",
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
+                    "font_family": defaults.font_family,
+                    "font_size": defaults.font_size,
                     "content_h_pt": round(content_h_pt, 1),
                     "content_w_pt": round(content_w_pt, 1),
                 },

@@ -17,3 +17,20 @@ def slugify(text: str) -> str:
 def page_size_to_css(name: str) -> str:
     """Pass-through; WeasyPrint accepts these names natively."""
     return name
+
+
+def css_font_family(value: str | None) -> str | None:
+    """Render a YAML ``font_family`` value as a safe CSS font-family.
+
+    Single-name values get double-quoted (so ``Times New Roman`` works
+    without needing nested YAML quotes). Comma-separated stacks are
+    treated as ready-to-use CSS and pass through verbatim.
+    """
+    if value is None:
+        return None
+    v = value.strip()
+    if not v:
+        return None
+    if "," in v or v.startswith(('"', "'")):
+        return v
+    return f'"{v}"'

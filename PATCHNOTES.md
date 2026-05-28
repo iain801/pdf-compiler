@@ -4,6 +4,25 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 [Keep a Changelog](https://keepachangelog.com/); this project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- **`font_family` and `font_size` on `Defaults` and `MarkdownSection`.**
+  Body-text typography is now configurable per-spec or per-markdown
+  section. `font_family` accepts any font installed on the rendering
+  host (resolved via fontconfig / Core Text) — single names auto-quote,
+  comma-separated stacks pass through. `font_size` accepts any CSS
+  length (`11pt`, `1.05em`, …). Headings keep their own font stack.
+  Implemented via CSS variables on `:root`; `base.css` uses
+  `var(--body-font, …)` / `var(--body-font-size, 11pt)` with the
+  original Helvetica/11pt as fallback.
+
+### Changed
+- Refactored the per-template `:root { … }` style block into a single
+  `render.html.root_vars()` helper that builds the declaration from
+  context; all five templates now share one `{{ root_style|safe }}`
+  injection point.
+
 ## [0.4.0] — 2026-05-27
 
 ### Added

@@ -45,6 +45,11 @@ class MarkdownImpl:
         )
         cached = ctx.cache.get(key)
         out = cached if cached is not None else ctx.tmp_pdf("markdown")
+        font_family = (
+            self.spec.font_family if self.spec.font_family is not None else defaults.font_family
+        )
+        font_size = self.spec.font_size if self.spec.font_size is not None else defaults.font_size
+
         if cached is None:
             # Prepend an invisible anchor for the section as a whole.
             anchored = f'<span id="{section_dest}"></span>\n{html_body}'
@@ -55,6 +60,8 @@ class MarkdownImpl:
                     "body_html": anchored,
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
+                    "font_family": font_family,
+                    "font_size": font_size,
                 },
                 out,
                 base_url=ctx.project_root,

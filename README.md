@@ -104,6 +104,8 @@ defaults:
   index_headers: true        # markdown headings become ToC entries
   page_size: letter          # letter | legal | a4 | a5 | tabloid
   margin: 0.75in
+  font_family: Times New Roman  # any OS-installed font; comma-stacks OK
+  font_size: 11pt            # CSS length: pt | px | em | rem | in | cm | mm
   regularize_pages: false    # scale embedded PDFs to fit page_size
   flatten_annotations: false # bake form fields/sticky notes/highlights into page content
   in_toc: true               # default for header/pdf/images sections
@@ -200,6 +202,8 @@ each part deserves its own overview page.
   path: chapters/intro.md
   title: "Introduction"      # optional; else the first H1 in the file
   index_headers: true        # optional; else inherits defaults.index_headers
+  font_family: Calibri       # optional; else inherits defaults.font_family
+  font_size: 12pt            # optional; else inherits defaults.font_size
 ```
 
 When `index_headers` is on, every heading in the markdown becomes a
@@ -207,6 +211,25 @@ nested ToC entry. The heading hierarchy maps to ToC depth.
 
 Markdown rendering uses CommonMark with GFM-style pipe tables,
 strikethrough (`~~gone~~`), and URL autolinking enabled.
+
+**Fonts.** Set `font_family` to any font installed on the rendering
+host — WeasyPrint resolves names via fontconfig on Linux and Core Text
+on macOS, so anything available to your OS works (`Times New Roman`,
+`Calibri`, `Arial`, `Helvetica`, `Garamond`, …). Single names need no
+quoting in YAML; multi-font fallback stacks pass through as raw CSS.
+
+```yaml
+defaults:
+  font_family: Garamond               # single name
+  # or:
+  font_family: '"Calibri", Arial, sans-serif'   # explicit stack
+  font_size: 11pt
+```
+
+Settings on `defaults` apply to body text in every section (markdown,
+ToC, header bodies, gallery captions, etc.). Headings (`h1`–`h4`) keep
+their own typography. Per-section `font_family` / `font_size` on a
+`markdown` section overrides the default for just that section.
 
 #### `pdf` — embed an existing PDF
 

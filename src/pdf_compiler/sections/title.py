@@ -75,6 +75,8 @@ class TitleImpl:
                     "date": resolved_date,
                     "page_size": defaults.page_size,
                     "margin": defaults.margin,
+                    "font_family": defaults.font_family,
+                    "font_size": defaults.font_size,
                 },
                 out,
                 base_url=ctx.project_root,
