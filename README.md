@@ -22,7 +22,7 @@ The console script `pdfc` is installed into the project venv. Run it
 with `uv run pdfc ...` or activate the venv with `source .venv/bin/activate`
 and call `pdfc` directly.
 
-Requires Python ≥ 3.14. WeasyPrint pulls in cairo/pango — on macOS
+Requires Python ≥ 3.12. WeasyPrint pulls in cairo/pango — on macOS
 `brew install cairo pango gdk-pixbuf libffi` is the usual prerequisite;
 on Debian/Ubuntu, `apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0`.
 
@@ -105,11 +105,18 @@ defaults:
   page_size: letter          # letter | legal | a4 | a5 | tabloid
   margin: 0.75in
   regularize_pages: false    # scale embedded PDFs to fit page_size
+  flatten_annotations: false # bake form fields/sticky notes/highlights into page content
+  in_toc: true               # default for header/pdf/images sections
+  preserve_bookmarks: true   # default for pdf sections
   page_numbering:
     enabled: false           # stamp page numbers on each page
     front_matter: roman      # roman | arabic | none
     body: arabic
     position: bottom-center  # bottom-{center,left,right}, top-…
+    # The PDF /PageLabels number tree (used by viewers to show the
+    # document's logical page label in their sidebar / page indicator)
+    # always reflects front_matter / body styles — even when
+    # `enabled: false`.
 
 vars:                        # see "Variables" below
   petitioner: "Jane Smith"
@@ -209,9 +216,10 @@ strikethrough (`~~gone~~`), and URL autolinking enabled.
   pages: "1-10,15,20-"       # 1-based, inclusive; "20-" = to end
   title: "Q1 Vendor Report"  # optional; else the file stem
   rotate: 0                  # 0 | 90 | 180 | 270
-  preserve_bookmarks: true   # merge included PDF's outline under this entry
+  preserve_bookmarks: null   # null=inherit defaults.preserve_bookmarks; true/false to override
   regularize_pages: null     # null=inherit defaults.regularize_pages; true/false to override
-  in_toc: true
+  flatten_annotations: null  # null=inherit defaults.flatten_annotations; true bakes form fields
+  in_toc: null               # null=inherit defaults.in_toc; true/false to override
 ```
 
 Set `regularize_pages: true` (or enable it on `defaults`) when the
@@ -220,6 +228,18 @@ oversized originals. Each source page is scaled & centered onto a
 target-sized blank page so the final document has uniform on-screen
 dimensions. Pages that already match the target are passed through
 untouched.
+
+Set `flatten_annotations: true` to bake interactive elements (form
+fields, signature widgets, sticky-note comments, highlights, freetext
+stamps) into the page content stream. Useful for evidence packets or
+archival deliverables where the recipient should see exactly what
+you see. Internal `/Link` annotations (clickable ToC entries, outline
+destinations) are preserved.
+
+The header/pdf/images section flags `in_toc`, plus pdf's
+`preserve_bookmarks`, `regularize_pages`, and `flatten_annotations`,
+all inherit from the corresponding `defaults` key when set to `null`
+(the default).  Setting `true`/`false` on the section wins.
 
 Page-range syntax:
 
@@ -370,6 +390,13 @@ parse → validate → resolve paths →
   "i". A single shared Helvetica resource keeps the per-page overhead
   to one small content-stream object.
 
+- **Viewer page labels.** Every assembled document also gets a
+  `/Catalog/PageLabels` number tree so PDF viewers (Preview, Acrobat,
+  Chrome) display the document's logical labels (`i`, `ii`, `1`, `2`,
+  …) in their sidebar / page indicator, not just the sequential page
+  index. This metadata is always installed — independent of whether
+  on-page stamping is enabled.
+
 - **Page-size regularization.** With `regularize_pages: true` the
   embedder wraps each source page onto a fresh target-sized page via
   pikepdf's overlay primitive, scaling & centering to fit while
@@ -383,10 +410,16 @@ parse → validate → resolve paths →
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # 158 tests; runs in ~4s
+uv run pytest                 # ~180 tests; runs in ~5s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
+uv run ruff format            # format
 ```
+
+GitHub Actions run lint + format check + tests on every push and PR
+against `main` (Python 3.12 and 3.13), then build sdist + wheel. The
+release workflow publishes to PyPI and creates a GitHub Release on
+`v*` tags.
 
 Project layout:
 
