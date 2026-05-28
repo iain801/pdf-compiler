@@ -151,6 +151,96 @@ def test_pdf_section_regularize_section_override(tmp_path: Path, make_pdf):
         assert (float(mb[2]), float(mb[3])) == (612.0, 792.0)
 
 
+def _make_pdf_with_stamp_annotation(path: Path) -> Path:
+    """A 1-page PDF carrying a single Stamp annotation with an /AP appearance
+    stream — the kind qpdf's flatten can actually bake into page content."""
+    pdf = pikepdf.Pdf.new()
+    page = pdf.add_blank_page(page_size=(612, 792))
+    ap = pdf.make_stream(
+        b"q 0.8 0.2 0.2 rg 0 0 100 30 re f Q\n",
+        BBox=pikepdf.Array([0, 0, 100, 30]),
+        Resources=pikepdf.Dictionary(),
+        Type=pikepdf.Name("/XObject"),
+        Subtype=pikepdf.Name("/Form"),
+    )
+    annot = pikepdf.Dictionary(
+        Type=pikepdf.Name("/Annot"),
+        Subtype=pikepdf.Name("/Stamp"),
+        Rect=pikepdf.Array([100, 700, 200, 730]),
+        AP=pikepdf.Dictionary(N=ap),
+    )
+    page.obj["/Annots"] = pikepdf.Array([pdf.make_indirect(annot)])
+    pdf.save(path)
+    return path
+
+
+def test_pdf_section_flatten_annotations_strips_annotations(tmp_path: Path):
+    """With flatten_annotations on, the embedded PDF's annotations are baked."""
+    src = _make_pdf_with_stamp_annotation(tmp_path / "stamp.pdf")
+    ctx = _ctx(tmp_path, defaults=Defaults(flatten_annotations=True))
+    cs = impl_for(PdfSection(path=src), 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        assert pdf.pages[0].obj.get("/Annots", []) == []
+
+
+def test_pdf_section_flatten_annotations_default_keeps_them(tmp_path: Path):
+    """Default (flatten_annotations=False) preserves the source annotations."""
+    src = _make_pdf_with_stamp_annotation(tmp_path / "stamp.pdf")
+    ctx = _ctx(tmp_path)
+    cs = impl_for(PdfSection(path=src), 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        assert len(pdf.pages[0].obj.get("/Annots", [])) == 1
+
+
+def test_pdf_section_flatten_annotations_section_override(tmp_path: Path):
+    """Per-section flatten_annotations overrides the default."""
+    src = _make_pdf_with_stamp_annotation(tmp_path / "stamp.pdf")
+    ctx = _ctx(tmp_path, defaults=Defaults(flatten_annotations=False))
+    cs = impl_for(PdfSection(path=src, flatten_annotations=True), 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as pdf:
+        assert pdf.pages[0].obj.get("/Annots", []) == []
+
+
+def test_pdf_section_in_toc_inherits_from_defaults_false(tmp_path: Path, make_pdf):
+    """defaults.in_toc=False suppresses ToC entry when the section doesn't set it."""
+    src = make_pdf(1, "x.pdf")
+    ctx = _ctx(tmp_path, defaults=Defaults(in_toc=False))
+    cs = impl_for(PdfSection(path=src), 0, ctx.defaults).compile(ctx)
+    assert cs.toc_entries == ()
+
+
+def test_pdf_section_in_toc_explicit_overrides_defaults(tmp_path: Path, make_pdf):
+    """Per-section in_toc=True overrides defaults.in_toc=False."""
+    src = make_pdf(1, "x.pdf")
+    ctx = _ctx(tmp_path, defaults=Defaults(in_toc=False))
+    cs = impl_for(PdfSection(path=src, in_toc=True), 0, ctx.defaults).compile(ctx)
+    assert len(cs.toc_entries) == 1
+
+
+def test_pdf_section_preserve_bookmarks_inherits_from_defaults(tmp_path: Path):
+    """defaults.preserve_bookmarks=False suppresses outline import."""
+    # Build a small PDF with an outline entry.
+    src = tmp_path / "with_outline.pdf"
+    pdf = pikepdf.Pdf.new()
+    pdf.add_blank_page(page_size=(612, 792))
+    with pdf.open_outline() as ol:
+        ol.root.append(pikepdf.OutlineItem("Bookmark", destination=0))
+    pdf.save(src)
+    pdf.close()
+
+    ctx = _ctx(tmp_path, defaults=Defaults(preserve_bookmarks=False))
+    cs = impl_for(PdfSection(path=src), 0, ctx.defaults).compile(ctx)
+    # Outline tuple contains only the section's own header — no children imported.
+    assert cs.outline[0].children == ()
+
+
+def test_header_section_in_toc_inherits_from_defaults_false(tmp_path: Path):
+    """defaults.in_toc=False also applies to header sections."""
+    ctx = _ctx(tmp_path, defaults=Defaults(in_toc=False))
+    cs = impl_for(HeaderSection(title="Part 1"), 0, ctx.defaults).compile(ctx)
+    assert cs.toc_entries == ()
+
+
 def test_images_section_grid(tmp_path: Path):
     pytest.importorskip("PIL")
     from PIL import Image

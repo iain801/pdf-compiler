@@ -19,7 +19,7 @@ import pikepdf
 from pdf_compiler.lengths import parse_length_pt
 from pdf_compiler.numbering import format_page_number
 from pdf_compiler.sections.base import CompiledSection, OutlineNode
-from pdf_compiler.spec import Metadata, PageNumbering
+from pdf_compiler.spec import Metadata, NumberingStyle, PageNumbering
 
 
 @dataclass(frozen=True, slots=True)
@@ -70,9 +70,11 @@ def assemble(
     _install_named_destinations(combined, global_dests)
     _install_outline(combined, outline_nodes)
     _install_metadata(combined, metadata)
-    if page_numbering is not None and page_numbering.enabled:
-        margin_pt = parse_length_pt(margin) if margin else 54.0
-        _stamp_page_numbers(combined, page_numbering, front_matter_pages, margin_pt)
+    if page_numbering is not None:
+        _install_page_labels(combined, page_numbering, front_matter_pages)
+        if page_numbering.enabled:
+            margin_pt = parse_length_pt(margin) if margin else 54.0
+            _stamp_page_numbers(combined, page_numbering, front_matter_pages, margin_pt)
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.save(output_path, linearize=False)
@@ -137,6 +139,60 @@ def _to_outline_item(node: OutlineNode) -> pikepdf.OutlineItem:
     for child in node.children:
         item.children.append(_to_outline_item(child))
     return item
+
+
+# PDF /S codes for the numbering styles we support. "none" is intentionally
+# absent — a label dict with no /S has no numeric component, leaving the
+# viewer to display empty page labels for that run.
+_PDF_LABEL_STYLE: dict[NumberingStyle, str] = {
+    "arabic": "/D",
+    "roman": "/r",
+}
+
+
+def _install_page_labels(
+    pdf: pikepdf.Pdf,
+    config: PageNumbering,
+    front_matter_pages: set[int],
+) -> None:
+    """Install a /Catalog/PageLabels number tree so PDF viewers display the
+    document's logical page labels (e.g. ``i``, ``ii``, ``1``, ``2``) in
+    their sidebar / page indicator, not just the sequential page index.
+
+    A new /Nums entry is emitted at each style transition; viewers continue
+    incrementing with the previous style until the next entry.
+    """
+    n_pages = len(pdf.pages)
+    if n_pages == 0:
+        return
+
+    nums: list = []
+    fm_counter = 0
+    body_counter = 0
+    prev_style: NumberingStyle | None = None
+
+    for i in range(n_pages):
+        if i in front_matter_pages:
+            fm_counter += 1
+            style = config.front_matter
+            start = fm_counter
+        else:
+            body_counter += 1
+            style = config.body
+            start = body_counter
+        if style == prev_style:
+            continue
+        entry = pikepdf.Dictionary()
+        code = _PDF_LABEL_STYLE.get(style)
+        if code is not None:
+            entry["/S"] = pikepdf.Name(code)
+        if start != 1:
+            entry["/St"] = start
+        nums.append(i)
+        nums.append(entry)
+        prev_style = style
+
+    pdf.Root["/PageLabels"] = pikepdf.Dictionary(Nums=pikepdf.Array(nums))
 
 
 _STAMP_FONT_KEY = "/PdfcPgNum"

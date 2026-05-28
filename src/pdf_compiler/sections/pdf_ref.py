@@ -35,12 +35,23 @@ class PdfRefImpl:
             if self.spec.regularize_pages is not None
             else defaults.regularize_pages
         )
+        flatten = (
+            self.spec.flatten_annotations
+            if self.spec.flatten_annotations is not None
+            else defaults.flatten_annotations
+        )
+        preserve_bookmarks = (
+            self.spec.preserve_bookmarks
+            if self.spec.preserve_bookmarks is not None
+            else defaults.preserve_bookmarks
+        )
+        in_toc = self.spec.in_toc if self.spec.in_toc is not None else defaults.in_toc
 
         key = hash_section(
             self.spec.model_dump(mode="json"),
             defaults_dump=defaults.model_dump(mode="json"),
             input_files=(src_path,),
-            extra=f"pdf:{prefix}:reg={regularize}".encode(),
+            extra=f"pdf:{prefix}:reg={regularize}:flat={flatten}".encode(),
         )
         cached = ctx.cache.get(key)
 
@@ -60,6 +71,8 @@ class PdfRefImpl:
                         dst.pages.append(page)
                     else:
                         _append_regularized(dst, page, target_wh)
+                if flatten:
+                    dst.flatten_annotations("all")
                 dst.save(out_path)
                 dst.close()
                 out_path = ctx.cache.put(key, out_path)
@@ -67,23 +80,19 @@ class PdfRefImpl:
                 out_path = cached
 
             outline_children: tuple[OutlineNode, ...] = ()
-            if self.spec.preserve_bookmarks:
+            if preserve_bookmarks:
                 outline_children = _preserve_outline(src, local_for_src, prefix)
 
         title = self.spec.title or src_path.stem
         n_pages = len(indices)
-        toc = (
-            (TocEntry(depth=1, label=title, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc
-            else ()
-        )
+        toc = (TocEntry(depth=1, label=title, dest_name=dest_name, local_page=0),) if in_toc else ()
         outline = (
             (
                 OutlineNode(
                     title=title, dest_name=dest_name, local_page=0, children=outline_children
                 ),
             )
-            if self.spec.in_toc
+            if in_toc
             else outline_children
         )
         return CompiledSection(

@@ -188,15 +188,14 @@ def subtoc_header_compiled_section(
     dest_name: str,
     *,
     title: str | None = None,
+    in_toc: bool = True,
 ) -> CompiledSection:
     """Wrap a deferred-rendered subtoc header into a CompiledSection."""
     from pdf_compiler.sections.base import OutlineNode
 
     label = title or spec.title
-    toc = (
-        (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
-    )
-    outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if spec.in_toc else ()
+    toc = (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if in_toc else ()
+    outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if in_toc else ()
     return CompiledSection(
         pdf_path=pdf_path,
         page_count=page_count,

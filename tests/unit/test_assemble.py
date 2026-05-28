@@ -163,6 +163,73 @@ def test_page_numbers_position_right(tmp_path, make_pdf):
         assert words[-1]["x0"] > page.width / 2
 
 
+def test_page_labels_installed_for_roman_then_arabic(tmp_path, make_pdf):
+    """Front-matter pages get /r (lowercase roman), body pages restart at /D."""
+    front = _section(make_pdf(2, "fm.pdf"), 2, front_matter=True)
+    body = _section(make_pdf(3, "body.pdf"), 3)
+    out = tmp_path / "out.pdf"
+    assemble([front, body], out, Metadata(), page_numbering=PageNumbering())
+    with pikepdf.open(out) as pdf:
+        nums = pdf.Root["/PageLabels"]["/Nums"]
+        assert len(nums) == 4
+        assert int(nums[0]) == 0
+        assert nums[1]["/S"] == pikepdf.Name("/r")
+        assert int(nums[2]) == 2
+        assert nums[3]["/S"] == pikepdf.Name("/D")
+
+
+def test_page_labels_skip_S_for_none_style(tmp_path, make_pdf):
+    """A style of 'none' produces an entry with no /S, leaving labels blank."""
+    front = _section(make_pdf(1, "fm.pdf"), 1, front_matter=True)
+    body = _section(make_pdf(1, "body.pdf"), 1)
+    out = tmp_path / "out.pdf"
+    assemble(
+        [front, body],
+        out,
+        Metadata(),
+        page_numbering=PageNumbering(front_matter="none"),
+    )
+    with pikepdf.open(out) as pdf:
+        nums = pdf.Root["/PageLabels"]["/Nums"]
+        # First entry is the "none" front-matter run; second is body /D.
+        assert "/S" not in nums[1]
+        assert nums[3]["/S"] == pikepdf.Name("/D")
+
+
+def test_page_labels_installed_without_stamping(tmp_path, make_pdf):
+    """/PageLabels installs even when ``enabled=False`` (purely viewer-side)."""
+    front = _section(make_pdf(1, "fm.pdf"), 1, front_matter=True)
+    body = _section(make_pdf(1, "body.pdf"), 1)
+    out = tmp_path / "out.pdf"
+    assemble(
+        [front, body],
+        out,
+        Metadata(),
+        page_numbering=PageNumbering(enabled=False),
+    )
+    with pikepdf.open(out) as pdf:
+        assert "/PageLabels" in pdf.Root
+
+
+def test_page_labels_resumed_body_run_carries_starting_number(tmp_path, make_pdf):
+    """Body→front_matter→body emits an /St on the second body run."""
+    body1 = _section(make_pdf(2, "b1.pdf"), 2)
+    fm = _section(make_pdf(2, "fm.pdf"), 2, front_matter=True)
+    body2 = _section(make_pdf(2, "b2.pdf"), 2)
+    out = tmp_path / "out.pdf"
+    assemble([body1, fm, body2], out, Metadata(), page_numbering=PageNumbering())
+    with pikepdf.open(out) as pdf:
+        nums = pdf.Root["/PageLabels"]["/Nums"]
+        # body /D at page 0 (start 1, no /St), /r at page 2 (start 1, no /St),
+        # /D resumed at page 4 with /St 3.
+        assert int(nums[0]) == 0 and nums[1]["/S"] == pikepdf.Name("/D")
+        assert "/St" not in nums[1]
+        assert int(nums[2]) == 2 and nums[3]["/S"] == pikepdf.Name("/r")
+        assert "/St" not in nums[3]
+        assert int(nums[4]) == 4 and nums[5]["/S"] == pikepdf.Name("/D")
+        assert int(nums[5]["/St"]) == 3
+
+
 def test_toc_destinations_tracked(tmp_path, make_pdf):
     a = _section(
         make_pdf(3, "a.pdf"),

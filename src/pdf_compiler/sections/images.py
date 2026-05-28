@@ -160,16 +160,9 @@ class ImagesImpl:
 
         n = page_count_of(out)
         label = title or "Gallery"
-        toc = (
-            (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc
-            else ()
-        )
-        outline = (
-            (OutlineNode(title=label, dest_name=dest_name, local_page=0),)
-            if self.spec.in_toc
-            else ()
-        )
+        in_toc = self.spec.in_toc if self.spec.in_toc is not None else defaults.in_toc
+        toc = (TocEntry(depth=1, label=label, dest_name=dest_name, local_page=0),) if in_toc else ()
+        outline = (OutlineNode(title=label, dest_name=dest_name, local_page=0),) if in_toc else ()
         return CompiledSection(
             pdf_path=out,
             page_count=n,

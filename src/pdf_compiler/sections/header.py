@@ -58,9 +58,10 @@ class HeaderImpl:
             out = ctx.cache.put(key, out)
         else:
             out = cached
+        in_toc = self.spec.in_toc if self.spec.in_toc is not None else defaults.in_toc
         return simple_compiled_section(
             out,
             dest_name=dest_name,
             label=title,
-            in_toc=self.spec.in_toc,
+            in_toc=in_toc,
         )

@@ -137,12 +137,14 @@ def _wrap_deferred(
     if isinstance(sec, TocSection):
         return toc_compiled_section(pdf_path, page_count, sec, title=title)
     assert isinstance(sec, HeaderSection)
+    in_toc = sec.in_toc if sec.in_toc is not None else ctx.defaults.in_toc
     return subtoc_header_compiled_section(
         pdf_path,
         page_count,
         sec,
         f"{dest_prefix(idx)}-header",
         title=title,
+        in_toc=in_toc,
     )
 
 

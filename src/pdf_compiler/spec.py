@@ -48,6 +48,15 @@ class Defaults(_Strict):
     # If true, embedded PDF pages are scaled & centered into a target-sized
     # page so scanned/oversized originals match the rest of the document.
     regularize_pages: bool = False
+    # If true, form fields, sticky notes, highlights, etc. on embedded PDFs
+    # are baked into the page content (link annotations are preserved).
+    flatten_annotations: bool = False
+    # Whether sections appear in the ToC by default. Applies to header, pdf,
+    # and images sections; title sections always default to False.
+    in_toc: bool = True
+    # Whether embedded PDF outlines are preserved as nested ToC/outline
+    # entries by default.
+    preserve_bookmarks: bool = True
 
 
 class Metadata(_Strict):
@@ -92,7 +101,7 @@ class HeaderSection(_Strict):
     title: str
     subtitle: str | None = None
     body: str | None = None  # optional markdown shown below the title
-    in_toc: bool = True
+    in_toc: bool | None = None  # None = inherit Defaults.in_toc
     # When true, this header is followed by a mini ToC of the entries from
     # every subsequent section, up to (but not including) the next header.
     subtoc: bool = False
@@ -112,10 +121,12 @@ class PdfSection(_Strict):
     pages: str | None = None  # e.g. "1-10,15,20-"; None = all
     title: str | None = None
     rotate: Literal[0, 90, 180, 270] = 0
-    preserve_bookmarks: bool = True
-    in_toc: bool = True
+    preserve_bookmarks: bool | None = None  # None = inherit Defaults.preserve_bookmarks
+    in_toc: bool | None = None  # None = inherit Defaults.in_toc
     # Override Defaults.regularize_pages for this section. None = inherit.
     regularize_pages: bool | None = None
+    # Override Defaults.flatten_annotations for this section. None = inherit.
+    flatten_annotations: bool | None = None
 
 
 class ImageItem(_Strict):
@@ -131,7 +142,7 @@ class ImagesSection(_Strict):
     layout: GalleryLayout = "grid"
     captions: CaptionPlacement = "below"
     images: tuple[ImageItem, ...]
-    in_toc: bool = True
+    in_toc: bool | None = None  # None = inherit Defaults.in_toc
     # Use variable row heights so every page fills edge-to-edge while keeping
     # image order.  Rows taller for portrait images, shorter for landscape.
     variable_heights: bool = False
