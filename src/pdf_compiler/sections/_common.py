@@ -33,6 +33,45 @@ def page_count_of(pdf_path: Path | str) -> int:
         return len(p.pages)
 
 
+def extract_named_dests(pdf_path: Path | str) -> dict[str, tuple[int, float, float]]:
+    """Read a PDF's ``/Catalog/Names/Dests`` tree and return
+    ``{name: (page_idx, x, y)}`` using PDF user-space coordinates.
+
+    WeasyPrint emits a ``[page /XYZ x y zoom]`` destination for every
+    ``<span id="...">`` in the source HTML.  We read those back to learn
+    the actual page + on-page position of each anchor so assembly can
+    install destinations that land at the heading itself, not at the
+    section's first page.
+    """
+    import pikepdf
+
+    out: dict[str, tuple[int, float, float]] = {}
+    with pikepdf.open(pdf_path) as pdf:
+        page_index = {p.obj.objgen: i for i, p in enumerate(pdf.pages)}
+        names = pdf.Root.get("/Names")
+        if names is None:
+            return out
+        dests = names.get("/Dests")
+        if dests is None:
+            return out
+        # Flat name tree: [name, dest_array, name, dest_array, ...].
+        entries = dests.get("/Names") or []
+        for k in range(0, len(entries), 2):
+            name = str(entries[k])
+            arr = entries[k + 1]
+            try:
+                page_obj = arr[0]
+                x = float(arr[2]) if arr[2] is not None else 0.0
+                y = float(arr[3]) if arr[3] is not None else 0.0
+            except (IndexError, TypeError, ValueError):
+                continue
+            idx = page_index.get(page_obj.objgen)
+            if idx is None:
+                continue
+            out[name] = (idx, x, y)
+    return out
+
+
 def simple_compiled_section(
     pdf_path: Path,
     *,

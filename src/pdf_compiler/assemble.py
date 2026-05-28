@@ -44,6 +44,7 @@ def assemble(
 
     combined = pikepdf.Pdf.new()
     global_dests: dict[str, int] = {}
+    global_dest_coords: dict[str, tuple[float, float]] = {}
     toc_dests: dict[str, int] = {}
     outline_nodes: list[OutlineNode] = []
     front_matter_pages: set[int] = set()
@@ -59,6 +60,8 @@ def assemble(
             if name in global_dests:
                 raise AssemblyError(f"duplicate destination name: {name!r}")
             global_dests[name] = page_offset + local
+        for name, coords in sec.destination_coords.items():
+            global_dest_coords[name] = coords
         for entry in sec.toc_entries:
             toc_dests[entry.dest_name] = page_offset + entry.local_page
         for node in sec.outline:
@@ -67,7 +70,7 @@ def assemble(
             front_matter_pages.update(range(page_offset, page_offset + sec.page_count))
         page_offset += sec.page_count
 
-    _install_named_destinations(combined, global_dests)
+    _install_named_destinations(combined, global_dests, global_dest_coords)
     _install_outline(combined, outline_nodes)
     _install_metadata(combined, metadata)
     if page_numbering is not None:
@@ -99,17 +102,31 @@ def _shift_outline(node: OutlineNode, page_offset: int) -> OutlineNode:
     )
 
 
-def _install_named_destinations(pdf: pikepdf.Pdf, dests: dict[str, int]) -> None:
-    """Install a flat ``/Dests`` name tree on ``/Catalog/Names``."""
+def _install_named_destinations(
+    pdf: pikepdf.Pdf,
+    dests: dict[str, int],
+    coords: dict[str, tuple[float, float]] | None = None,
+) -> None:
+    """Install a flat ``/Dests`` name tree on ``/Catalog/Names``.
+
+    When ``coords[name]`` is provided, the destination lands at the
+    exact ``(x, y)`` WeasyPrint emitted for that anchor. Without coords
+    we fall back to ``/XYZ null null null`` — top of the named page.
+    """
     if not dests:
         return
     null = pikepdf.Object.parse(b"null")
     pairs: list = []
+    coords = coords or {}
     for name in sorted(dests):
         page_idx = dests[name]
         page = pdf.pages[page_idx]
-        # /XYZ with nulls means "preserve current zoom + position from top".
-        dest_array = pikepdf.Array([page.obj, pikepdf.Name("/XYZ"), null, null, null])
+        if name in coords:
+            x, y = coords[name]
+            dest_array = pikepdf.Array([page.obj, pikepdf.Name("/XYZ"), x, y, null])
+        else:
+            # /XYZ with nulls means "preserve current zoom + position from top".
+            dest_array = pikepdf.Array([page.obj, pikepdf.Name("/XYZ"), null, null, null])
         pairs.append(pikepdf.String(name))
         pairs.append(dest_array)
     leaf = pikepdf.Dictionary(Names=pikepdf.Array(pairs))

@@ -42,6 +42,39 @@ def test_installs_named_destinations(tmp_path, make_pdf):
         assert set(keys) == {"intro", "middle", "end"}
 
 
+def test_destination_coords_emitted_when_provided(tmp_path, make_pdf):
+    """destination_coords on a section drives /XYZ x y in the dest array."""
+    p = make_pdf(2, "x.pdf")
+    sec = _section(
+        p,
+        2,
+        destinations={"heading-mid": 1},
+        destination_coords={"heading-mid": (42.0, 500.0)},
+    )
+    out = tmp_path / "out.pdf"
+    assemble([sec], out, Metadata())
+    with pikepdf.open(out) as pdf:
+        names = pdf.Root["/Names"]["/Dests"]["/Names"]
+        # entries[1] is the dest array for the first name.
+        arr = names[1]
+        # [page, /XYZ, x, y, zoom]
+        assert arr[1] == pikepdf.Name("/XYZ")
+        assert float(arr[2]) == 42.0
+        assert float(arr[3]) == 500.0
+
+
+def test_destinations_without_coords_use_null(tmp_path, make_pdf):
+    """Sections that don't supply coords get the page-top fallback."""
+    p = make_pdf(1, "x.pdf")
+    sec = _section(p, 1, destinations={"top": 0})
+    out = tmp_path / "out.pdf"
+    assemble([sec], out, Metadata())
+    with pikepdf.open(out) as pdf:
+        arr = pdf.Root["/Names"]["/Dests"]["/Names"][1]
+        # arr[2], arr[3] should be null (no coords)
+        assert arr[2] is None or str(arr[2]) == "null"
+
+
 def test_destinations_shifted_by_page_offset(tmp_path, make_pdf):
     a = _section(make_pdf(2, "a.pdf"), 2, destinations={"a-top": 0})
     b = _section(make_pdf(3, "b.pdf"), 3, destinations={"b-top": 0, "b-mid": 1})

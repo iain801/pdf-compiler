@@ -49,9 +49,14 @@ class CompiledSection:
     toc_entries: tuple[TocEntry, ...] = ()
     outline: tuple[OutlineNode, ...] = ()
     front_matter: bool = False
-    # Map of dest_name -> (local_page_index, x_y_optional). Assembly uses this
-    # to install named destinations on the final, concatenated PDF.
+    # Map of dest_name -> local page index (0-based within this section's PDF).
+    # Assembly remaps these to global page references via the catalog name tree.
     destinations: dict[str, int] = field(default_factory=dict)
+    # Optional in-page coordinates for destinations whose anchor sits below
+    # the page's top edge (e.g. markdown headings mid-page). Stored as the
+    # PDF user-space y (and x) WeasyPrint emitted into the section's own
+    # /Names/Dests tree. Missing entries fall back to "top of page".
+    destination_coords: dict[str, tuple[float, float]] = field(default_factory=dict)
 
 
 class Section(Protocol):

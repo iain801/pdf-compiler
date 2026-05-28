@@ -6,6 +6,16 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 
 ## [Unreleased]
 
+### Fixed
+- **Markdown heading clicks in the ToC now land on the heading itself.**
+  Previously every markdown-heading entry in the ToC resolved to the
+  section's first page (and the page-number column showed the same page
+  for every heading in the section). The compile step now reads
+  WeasyPrint's `/Names/Dests` tree from the rendered section PDF to
+  recover the real `(page, x, y)` for each heading, and assembly emits
+  `/XYZ x y` destinations so clicks land exactly at the anchor — both
+  in the main ToC and in PDF outline bookmarks.
+
 ### Added
 - **`font_family` and `font_size` on `Defaults` and `MarkdownSection`.**
   Body-text typography is now configurable per-spec or per-markdown
