@@ -225,39 +225,41 @@ def _rewrite_toc_links(pdf_path: Path, entries: list[dict]) -> None:
     ``/GoTo (real-content-dest-name)`` so clicking it jumps to the right
     page in the assembled document.
 
-    Matching is positional: annotations are sorted top-to-bottom across
-    pages (mirroring entry render order) and zipped with ``entries``.
+    Matching is by the ``/Dest`` string already on each annotation, which
+    encodes the entry index as ``__toc_N`` / ``__stoc_N``.  This handles
+    the common case where a long entry straddles a page break and WeasyPrint
+    emits two link annotations for the same row (both get rewritten to the
+    same target, which is correct).
     """
     if not entries:
         return
 
     with pikepdf.open(pdf_path, allow_overwriting_input=True) as pdf:
-        # Collect all Link annotations in top-to-bottom, page order.
-        annots_ordered: list[pikepdf.Dictionary] = []
+        rewritten = 0
         for page in pdf.pages:
-            page_annots = []
             for annot in page.obj.get("/Annots", []):
                 if annot.get("/Subtype") != pikepdf.Name("/Link"):
                     continue
-                rect = annot["/Rect"]
-                # PDF y=0 is at the bottom; negate so sorting gives top-first.
-                y_top = -(float(rect[3]) - float(page.MediaBox[1]))
-                page_annots.append((y_top, annot))
-            page_annots.sort(key=lambda t: t[0])
-            annots_ordered.extend(a for _, a in page_annots)
+                dest = annot.get("/Dest")
+                if dest is None:
+                    continue
+                dest_str = str(dest)
+                # Parse index from "__toc_N" or "__stoc_N".
+                for prefix in ("__toc_", "__stoc_"):
+                    if dest_str.startswith(prefix):
+                        try:
+                            idx = int(dest_str[len(prefix) :])
+                        except ValueError:
+                            break
+                        if 0 <= idx < len(entries):
+                            annot["/A"] = pikepdf.Dictionary(
+                                Type=pikepdf.Name("/Action"),
+                                S=pikepdf.Name("/GoTo"),
+                                D=pikepdf.String(entries[idx]["dest_name"]),
+                            )
+                            del annot["/Dest"]
+                            rewritten += 1
+                        break
 
-        if len(annots_ordered) != len(entries):
-            # Mismatch — something unexpected in the PDF; skip rewriting to
-            # avoid corrupting annotations rather than silently mis-mapping.
-            return
-
-        for annot, entry in zip(annots_ordered, entries, strict=True):
-            annot["/A"] = pikepdf.Dictionary(
-                Type=pikepdf.Name("/Action"),
-                S=pikepdf.Name("/GoTo"),
-                D=pikepdf.String(entry["dest_name"]),
-            )
-            if "/Dest" in annot:
-                del annot["/Dest"]
-
-        pdf.save(pdf_path)
+        if rewritten:
+            pdf.save(pdf_path)
