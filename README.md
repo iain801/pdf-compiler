@@ -22,9 +22,25 @@ The console script `pdfc` is installed into the project venv. Run it
 with `uv run pdfc ...` or activate the venv with `source .venv/bin/activate`
 and call `pdfc` directly.
 
-Requires Python ≥ 3.12. WeasyPrint pulls in cairo/pango — on macOS
-`brew install cairo pango gdk-pixbuf libffi` is the usual prerequisite;
-on Debian/Ubuntu, `apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0`.
+Requires Python ≥ 3.12. WeasyPrint pulls in cairo/pango as system
+libraries.
+
+**macOS** — install the system deps via Homebrew first, then install the
+tool using the Homebrew Python so the dynamic linker can find them:
+
+```bash
+brew install cairo pango gdk-pixbuf libffi
+uv tool install --python $(brew --prefix)/bin/python3 pdf-compiler
+```
+
+Using a uv-managed standalone Python (the default) will fail to load
+`libgobject`/`libpango` because those are not in its library path.
+
+**Linux (Debian/Ubuntu)**:
+```bash
+apt install libcairo2 libpango-1.0-0 libpangoft2-1.0-0
+uv tool install pdf-compiler   # any Python ≥ 3.12 works
+```
 
 ---
 
