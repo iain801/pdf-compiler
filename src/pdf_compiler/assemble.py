@@ -176,8 +176,9 @@ def _install_page_labels(
     document's logical page labels (e.g. ``i``, ``ii``, ``1``, ``2``) in
     their sidebar / page indicator, not just the sequential page index.
 
-    A new /Nums entry is emitted at each style transition; viewers continue
-    incrementing with the previous style until the next entry.
+    A new /Nums entry is emitted whenever the numbering *run* changes —
+    either the style code or the front-matter/body boundary (which restarts
+    the counter). Viewers keep incrementing within a run until the next entry.
     """
     n_pages = len(pdf.pages)
     if n_pages == 0:
@@ -186,10 +187,11 @@ def _install_page_labels(
     nums: list = []
     fm_counter = 0
     body_counter = 0
-    prev_style: NumberingStyle | None = None
+    prev_key: tuple[bool, NumberingStyle] | None = None
 
     for i in range(n_pages):
-        if i in front_matter_pages:
+        is_fm = i in front_matter_pages
+        if is_fm:
             fm_counter += 1
             style = config.front_matter
             start = fm_counter
@@ -197,7 +199,11 @@ def _install_page_labels(
             body_counter += 1
             style = config.body
             start = body_counter
-        if style == prev_style:
+        # The run key includes is_fm so that a front-matter→body boundary
+        # emits a fresh entry (restarting the counter) even when both sides
+        # share the same style code (e.g. arabic front matter + arabic body).
+        key = (is_fm, style)
+        if key == prev_key:
             continue
         entry = pikepdf.Dictionary()
         code = _PDF_LABEL_STYLE.get(style)
@@ -207,7 +213,7 @@ def _install_page_labels(
             entry["/St"] = start
         nums.append(i)
         nums.append(entry)
-        prev_style = style
+        prev_key = key
 
     pdf.Root["/PageLabels"] = pikepdf.Dictionary(Nums=pikepdf.Array(nums))
 

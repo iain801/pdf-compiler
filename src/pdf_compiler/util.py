@@ -33,4 +33,8 @@ def css_font_family(value: str | None) -> str | None:
         return None
     if "," in v or v.startswith(('"', "'")):
         return v
-    return f'"{v}"'
+    # Single bare name: strip characters that can't appear in a real font
+    # name and would otherwise break (or escape) the inline ``:root { … }``
+    # declaration this value is injected into.
+    safe = "".join(c for c in v if c not in '"\\;{}\n\r')
+    return f'"{safe}"'

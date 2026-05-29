@@ -211,6 +211,32 @@ def test_page_labels_installed_for_roman_then_arabic(tmp_path, make_pdf):
         assert nums[3]["/S"] == pikepdf.Name("/D")
 
 
+def test_page_labels_restart_body_when_styles_match(tmp_path, make_pdf):
+    """Front-matter and body sharing a style must still restart the counter.
+
+    With both set to arabic, the front-matter run is 1,2 and the body run
+    must restart at 1 — i.e. a fresh /Nums entry with /St=1 (or absent) at
+    the body's first page, not a continuation of the front-matter count.
+    """
+    front = _section(make_pdf(2, "fm.pdf"), 2, front_matter=True)
+    body = _section(make_pdf(2, "body.pdf"), 2)
+    out = tmp_path / "out.pdf"
+    assemble(
+        [front, body],
+        out,
+        Metadata(),
+        page_numbering=PageNumbering(front_matter="arabic", body="arabic"),
+    )
+    with pikepdf.open(out) as pdf:
+        nums = pdf.Root["/PageLabels"]["/Nums"]
+        # Two runs even though the style code is identical.
+        assert len(nums) == 4
+        assert int(nums[0]) == 0
+        assert int(nums[2]) == 2  # body run starts at page index 2
+        # Body run restarts at 1: /St absent (defaults to 1).
+        assert "/St" not in nums[3]
+
+
 def test_page_labels_skip_S_for_none_style(tmp_path, make_pdf):
     """A style of 'none' produces an entry with no /S, leaving labels blank."""
     front = _section(make_pdf(1, "fm.pdf"), 1, front_matter=True)

@@ -13,7 +13,6 @@ from pdf_compiler.sections._common import (
     SectionMeta,
     dest_prefix,
     extract_named_dests,
-    page_count_of,
 )
 from pdf_compiler.sections.base import CompiledSection, OutlineNode, TocEntry
 from pdf_compiler.spec import MarkdownSection
@@ -77,14 +76,12 @@ class MarkdownImpl:
         # each anchor's real page + on-page position. Without this every
         # heading would resolve to the section's first page in the assembled
         # PDF.
-        ws_dests = extract_named_dests(out)
+        n, ws_dests = extract_named_dests(out)
 
-        def _page_for(name: str) -> int:
-            info = ws_dests.get(name)
-            return info[0] if info is not None else 0
-
+        # Only carry coordinates when both axes are present; a missing axis
+        # leaves the assembler's top-of-page fallback in place.
         destination_coords: dict[str, tuple[float, float]] = {
-            name: (x, y) for name, (_, x, y) in ws_dests.items()
+            name: (x, y) for name, (_, x, y) in ws_dests.items() if x is not None and y is not None
         }
 
         toc_entries: list[TocEntry] = [
@@ -99,7 +96,7 @@ class MarkdownImpl:
             if walk and walk[0].level == 1 and walk[0].text == title:
                 walk = walk[1:]
             for h in walk:
-                local_page = _page_for(h.anchor_id)
+                local_page = _dest_page(ws_dests, h.anchor_id)
                 toc_entries.append(
                     TocEntry(
                         depth=h.level,
@@ -116,7 +113,6 @@ class MarkdownImpl:
                 children=_to_outline(headings, ws_dests, skip_first_h1_titled=title),
             )
 
-        n = page_count_of(out)
         return CompiledSection(
             pdf_path=out,
             page_count=n,
@@ -133,9 +129,15 @@ def _iter_headings(hs: list[Heading]):
         yield from _iter_headings(h.children)
 
 
+def _dest_page(ws_dests: dict[str, tuple[int, float | None, float | None]], name: str) -> int:
+    """Page index WeasyPrint recorded for ``name``, or 0 if the anchor is absent."""
+    info = ws_dests.get(name)
+    return info[0] if info is not None else 0
+
+
 def _to_outline(
     hs: list[Heading],
-    ws_dests: dict[str, tuple[int, float, float]],
+    ws_dests: dict[str, tuple[int, float | None, float | None]],
     *,
     skip_first_h1_titled: str | None,
 ) -> tuple[OutlineNode, ...]:
@@ -145,7 +147,7 @@ def _to_outline(
             # Hoist its children up so we don't lose them.
             out.extend(_to_outline(h.children, ws_dests, skip_first_h1_titled=None))
             continue
-        page = ws_dests[h.anchor_id][0] if h.anchor_id in ws_dests else 0
+        page = _dest_page(ws_dests, h.anchor_id)
         out.append(
             OutlineNode(
                 title=h.text,
