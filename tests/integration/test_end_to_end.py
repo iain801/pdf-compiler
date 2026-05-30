@@ -112,6 +112,23 @@ def test_subtoc_header_renders_mini_toc(report_pdf: Path):
     assert "Financials Overview" in text
 
 
+def test_subtoc_header_appears_in_main_toc(report_pdf: Path):
+    """A subtoc: true header is itself deferred, but must still be listed on
+    the main ToC page (regression: deferred headers were skipped entirely)."""
+    import pdfplumber
+
+    with pdfplumber.open(report_pdf) as pdf:
+        toc_pages = [
+            p.extract_text() or ""
+            for p in pdf.pages
+            if "Table of Contents" in (p.extract_text() or "")
+        ]
+    assert toc_pages, "main ToC page not found"
+    # The Part II divider (subtoc: true) must appear on the main ToC itself,
+    # not only on its own subtoc page.
+    assert any("Part II — Financials" in t for t in toc_pages)
+
+
 def test_page_numbers_stamped(report_pdf: Path):
     """report.yaml has page_numbering.enabled: true — pages should bear
     roman and arabic stamps as appropriate."""

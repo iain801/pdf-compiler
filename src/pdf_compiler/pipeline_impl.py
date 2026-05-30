@@ -160,13 +160,13 @@ def _render_deferred(
 ) -> tuple[Path, int]:
     sec = spec.sections[idx]
     if isinstance(sec, TocSection):
-        entries = _entries_in_scope(spec, plan, compiled_map, scope=range(len(spec.sections)))
+        entries = _entries_in_scope(spec, plan, compiled_map, ctx, scope=range(len(spec.sections)))
         out = ctx.tmp_pdf(f"toc-{suffix}")
         n = render_toc(ctx, sec, entries, out_path=out, front_matter_pages=front_matter_pages)
         return out, n
     assert isinstance(sec, HeaderSection)
     scope = _subtoc_scope(spec, idx)
-    entries = _entries_in_scope(spec, plan, compiled_map, scope=scope)
+    entries = _entries_in_scope(spec, plan, compiled_map, ctx, scope=scope)
     out = ctx.tmp_pdf(f"header-{suffix}")
     n = render_subtoc_header(
         ctx,
@@ -206,6 +206,18 @@ def _plan_layout(
                 sum(1 for e in cs.toc_entries if e.depth <= sec.depth)
                 for cs in compiled_map.values()
             )
+            # Deferred subtoc headers are not in compiled_map but each
+            # contributes one depth-1 entry to the main ToC.
+            n_entries += sum(
+                1
+                for j in deferred_indices
+                if isinstance(spec.sections[j], HeaderSection)
+                and (
+                    spec.sections[j].in_toc
+                    if spec.sections[j].in_toc is not None
+                    else spec.defaults.in_toc
+                )
+            )
             deferred_pages[di] = estimate_toc_pages(n_entries)
         else:  # subtoc HeaderSection — one divider page plus the mini ToC
             assert isinstance(sec, HeaderSection)
@@ -240,19 +252,46 @@ def _entries_in_scope(
     spec: Spec,
     plan: LayoutPlan,
     compiled_map: dict[int, CompiledSection],
+    ctx: BuildContext,
     *,
     scope,
 ) -> list[tuple[TocEntry, int]]:
-    """Collect (entry, global_page) pairs from compiled sections in ``scope``."""
+    """Collect (entry, global_page) pairs for sections in ``scope``.
+
+    Non-deferred sections contribute their compiled ``toc_entries``. Deferred
+    ``subtoc: true`` headers are not in ``compiled_map`` when this runs (they
+    are rendered in the same pass), but their own ToC entry is fully
+    determined by the spec, so we synthesize it here — otherwise subtoc
+    headers would be missing from the main ToC entirely.
+    """
     out: list[tuple[TocEntry, int]] = []
     for i in scope:
-        if i not in compiled_map:
-            continue  # skip deferred sections — they don't contribute entries
-        cs = compiled_map[i]
         offset = plan.offsets[i]
-        for e in cs.toc_entries:
+        if i in compiled_map:
+            entries: tuple[TocEntry, ...] = compiled_map[i].toc_entries
+        else:
+            entries = _deferred_toc_entries(spec, i, ctx)
+        for e in entries:
             out.append((e, offset + e.local_page))
     return out
+
+
+def _deferred_toc_entries(spec: Spec, idx: int, ctx: BuildContext) -> tuple[TocEntry, ...]:
+    """ToC entry a deferred section contributes, synthesized without its PDF.
+
+    Mirrors what :func:`subtoc_header_compiled_section` produces once the
+    header is rendered, so the main ToC links resolve to the same
+    ``sec-NNNN-header`` named destination. The ToC section itself
+    contributes nothing.
+    """
+    sec = spec.sections[idx]
+    if not isinstance(sec, HeaderSection):
+        return ()
+    in_toc = sec.in_toc if sec.in_toc is not None else ctx.defaults.in_toc
+    if not in_toc:
+        return ()
+    label = interpolate(sec.title, ctx.vars)
+    return (TocEntry(depth=1, label=label, dest_name=f"{dest_prefix(idx)}-header", local_page=0),)
 
 
 def _front_matter_set(
