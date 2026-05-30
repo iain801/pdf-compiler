@@ -6,6 +6,8 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-05-30
+
 ### Fixed
 - **Markdown heading clicks in the ToC now land on the heading itself.**
   Previously every markdown-heading entry in the ToC resolved to the
@@ -15,6 +17,29 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
   recover the real `(page, x, y)` for each heading, and assembly emits
   `/XYZ x y` destinations so clicks land exactly at the anchor — both
   in the main ToC and in PDF outline bookmarks.
+- **ToC links are rewritten by entry index, not position.** The old
+  positional matching bailed out silently whenever a ToC row straddled
+  a page break (WeasyPrint emits two annotations for it), leaving every
+  link pointing back at the ToC page. Links are now matched by the
+  `__toc_N` / `__stoc_N` index already on each annotation.
+- **Page labels restart correctly when front-matter and body share a
+  numbering style.** With both set to `arabic`, the body counter now
+  restarts at 1 instead of continuing the front-matter count.
+- **`extract_named_dests` no longer crashes on a malformed destination**
+  (null page reference) and preserves the top-of-page fallback when a
+  destination coordinate is absent rather than forcing it to the page
+  edge.
+
+### Added
+- **`font_family` and `font_size` on `Defaults` and `MarkdownSection`.**
+  Body-text typography is now configurable per-spec or per-markdown
+  section. `font_family` accepts any font installed on the rendering
+  host (resolved via fontconfig / Core Text) — single names auto-quote,
+  comma-separated stacks pass through. `font_size` accepts any CSS
+  length (`11pt`, `1.05em`, …). Headings keep their own font stack.
+  Implemented via CSS variables on `:root`; `base.css` uses
+  `var(--body-font, …)` / `var(--body-font-size, 11pt)` with the
+  original Helvetica/11pt as fallback.
 
 ### Added
 - **`font_family` and `font_size` on `Defaults` and `MarkdownSection`.**
