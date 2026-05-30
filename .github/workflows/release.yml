@@ -1,57 +1,124 @@
 name: Release
 
+# Two ways to cut a release, both ending in: build → publish to PyPI →
+# GitHub Release. Everything runs in one job under one workflow file so a
+# single PyPI trusted publisher (workflow: release.yml, environment: pypi)
+# covers both paths.
+#
+#   1. Push a tag "v*" by hand        → releases exactly that tag.
+#   2. Run this workflow manually     → bumps the version (patch by
+#      (Actions tab, pick a level)      default), commits + tags, then
+#                                        releases the new version.
+
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      level:
+        description: "Semver part to bump (manual release only)"
+        type: choice
+        options: [patch, minor, major]
+        default: patch
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  release:
     runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      contents: write
+      id-token: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # --- manual bump path (workflow_dispatch only) -------------------
+      - name: Configure git
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and promote patch notes
+        id: bump
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          LEVEL: ${{ inputs.level }}
+        run: |
+          python3 - <<'PY'
+          import datetime, os, pathlib, re
+
+          level = os.environ["LEVEL"]
+          pyproject = pathlib.Path("pyproject.toml")
+          text = pyproject.read_text()
+          m = re.search(r'(?m)^version = "(\d+)\.(\d+)\.(\d+)"', text)
+          if m is None:
+              raise SystemExit("could not find version in pyproject.toml")
+          major, minor, patch = (int(g) for g in m.groups())
+          if level == "major":
+              major, minor, patch = major + 1, 0, 0
+          elif level == "minor":
+              minor, patch = minor + 1, 0
+          else:
+              patch += 1
+          new = f"{major}.{minor}.{patch}"
+          pyproject.write_text(text[: m.start()] + f'version = "{new}"' + text[m.end():])
+
+          # Promote the [Unreleased] heading: insert a dated version heading
+          # just below it, leaving a fresh empty [Unreleased] on top.
+          notes = pathlib.Path("PATCHNOTES.md")
+          if notes.exists():
+              today = datetime.date.today().isoformat()
+              nt = notes.read_text()
+              nt = nt.replace(
+                  "## [Unreleased]\n",
+                  f"## [Unreleased]\n\n## [{new}] — {today}\n",
+                  1,
+              )
+              notes.write_text(nt)
+
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"version={new}\n")
+          print(f"bumped to {new}")
+          PY
+
+      - name: Commit and tag
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          V="${{ steps.bump.outputs.version }}"
+          git add pyproject.toml PATCHNOTES.md
+          git commit -m "chore(release): ${V}"
+          git tag -a "v${V}" -m "v${V}"
+          git push origin "HEAD:${{ github.ref_name }}" --follow-tags
+
+      # --- common: resolve the tag, then build/publish/release ---------
+      - name: Resolve release tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "name=v${{ steps.bump.outputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "name=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Install uv
         uses: astral-sh/setup-uv@v5
         with:
           enable-cache: true
-      - name: Set up Python
-        run: uv python install 3.12
+
       - name: Build sdist and wheel
         run: uv build
-      - name: Upload dist
-        uses: actions/upload-artifact@v4
-        with:
-          name: dist
-          path: dist/
 
-  publish-pypi:
-    runs-on: ubuntu-latest
-    needs: build
-    environment: pypi
-    permissions:
-      id-token: write
-    steps:
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
 
-  github-release:
-    runs-on: ubuntu-latest
-    needs: build
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-      - name: Download dist
-        uses: actions/download-artifact@v4
-        with:
-          name: dist
-          path: dist/
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ steps.tag.outputs.name }}
           files: dist/*
           generate_release_notes: true
