@@ -6,6 +6,8 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 
 ## [Unreleased]
 
+## [0.5.1] — 2026-05-31
+
 ## [0.5.0] — 2026-05-30
 
 ### Fixed
