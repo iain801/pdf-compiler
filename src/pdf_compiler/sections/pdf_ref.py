@@ -148,23 +148,52 @@ def _append_regularized(
 
     ``Page.add_overlay`` scales the source page to fit (preserving aspect)
     inside the given rectangle, so scanned-at-A3 originals end up the same
-    on-screen size as letter-sized scans. Pages already at the target size
-    pass through cheaply (the overlay is a no-op transformation).
+    on-screen size as letter-sized scans. Pages whose *visible* box already
+    matches the target pass through cheaply.
+
+    Sizing is based on the visible box (CropBox clipped to MediaBox), not
+    the MediaBox alone — a page can have a letter MediaBox but a much
+    smaller CropBox (e.g. a cropped scan), which a viewer renders small.
+    For those we crop the MediaBox down to the visible box first so the
+    overlay scales exactly the displayed region onto the target page.
     """
     tw, th = target_wh
     sw, sh = _page_size_pt(src_page)
     if abs(sw - tw) < 0.5 and abs(sh - th) < 0.5:
         dst.pages.append(src_page)
         return
+    x0, y0, x1, y1 = _visible_box(src_page)
+    src_page.obj["/MediaBox"] = pikepdf.Array([x0, y0, x1, y1])
+    if "/CropBox" in src_page.obj:
+        del src_page.obj["/CropBox"]
     dst.add_blank_page(page_size=(tw, th))
     dst.pages[-1].add_overlay(src_page, rect=pikepdf.Rectangle(0, 0, tw, th))
 
 
+def _visible_box(page: pikepdf.Page) -> tuple[float, float, float, float]:
+    """The box a viewer displays: CropBox clipped to MediaBox, else MediaBox.
+
+    Returned as ``(x0, y0, x1, y1)`` in unrotated PDF user space, normalized
+    so x0<x1 and y0<y1.
+    """
+    mb = [float(v) for v in page.MediaBox]
+    mx0, mx1 = sorted((mb[0], mb[2]))
+    my0, my1 = sorted((mb[1], mb[3]))
+    cb_obj = page.obj.get("/CropBox")
+    if cb_obj is None:
+        return (mx0, my0, mx1, my1)
+    cb = [float(v) for v in cb_obj]
+    cx0, cx1 = sorted((cb[0], cb[2]))
+    cy0, cy1 = sorted((cb[1], cb[3]))
+    # The effective crop is the intersection of CropBox and MediaBox.
+    return (max(cx0, mx0), max(cy0, my0), min(cx1, mx1), min(cy1, my1))
+
+
 def _page_size_pt(page: pikepdf.Page) -> tuple[float, float]:
-    """Return the page's visual size in points, accounting for /Rotate."""
-    mb = page.MediaBox
-    w = float(mb[2]) - float(mb[0])
-    h = float(mb[3]) - float(mb[1])
+    """Return the page's visible size in points, accounting for /Rotate."""
+    x0, y0, x1, y1 = _visible_box(page)
+    w = x1 - x0
+    h = y1 - y0
     rot = int(page.obj.get("/Rotate", 0)) % 360
     if rot in (90, 270):
         w, h = h, w

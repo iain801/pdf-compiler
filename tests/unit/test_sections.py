@@ -151,6 +151,31 @@ def test_pdf_section_regularize_section_override(tmp_path: Path, make_pdf):
         assert (float(mb[2]), float(mb[3])) == (612.0, 792.0)
 
 
+def test_pdf_section_regularize_respects_cropbox(tmp_path: Path):
+    """A letter MediaBox with a small CropBox (a cropped scan) is rendered
+    small by viewers; regularization must scale the visible crop up to the
+    target and drop the CropBox, not pass the page through unchanged."""
+    src = tmp_path / "cropped.pdf"
+    pdf = pikepdf.Pdf.new()
+    pdf.add_blank_page(page_size=(612, 792))  # letter MediaBox
+    # Visible region is only a small centered box.
+    pdf.pages[0].obj["/CropBox"] = pikepdf.Array([126, 225, 489, 747])
+    pdf.save(src)
+    pdf.close()
+
+    ctx = _ctx(tmp_path, defaults=Defaults(regularize_pages=True))
+    cs = impl_for(PdfSection(path=src), 0, ctx.defaults).compile(ctx)
+    with pikepdf.open(cs.pdf_path) as out:
+        page = out.pages[0]
+        mb = page.MediaBox
+        # Page is now full letter...
+        assert (round(float(mb[2]), 1), round(float(mb[3]), 1)) == (612.0, 792.0)
+        # ...and the misleading small CropBox is gone (or equals MediaBox).
+        cb = page.obj.get("/CropBox")
+        if cb is not None:
+            assert (round(float(cb[2]), 1), round(float(cb[3]), 1)) == (612.0, 792.0)
+
+
 def _make_pdf_with_stamp_annotation(path: Path) -> Path:
     """A 1-page PDF carrying a single Stamp annotation with an /AP appearance
     stream — the kind qpdf's flatten can actually bake into page content."""
