@@ -80,7 +80,7 @@ markdown heading, and the rendered markdown body.
 ## CLI
 
 ```
-pdfc compile  SPEC [--out OUT] [-j N] [--no-cache]
+pdfc compile  SPEC [--out OUT] [-j N] [--no-cache] [--reconcile MODE]
 pdfc validate SPEC
 pdfc watch    SPEC [--out OUT]
 pdfc cache    clear
@@ -90,6 +90,9 @@ pdfc --version
 - **`compile`** runs the full pipeline and writes the output PDF.
   `-j N` sets the worker count for parallel section compilation
   (default: `cpu_count() - 1`). `--no-cache` forces a fresh build.
+  `--reconcile MODE` (`off`/`dedupe`/`merge`/`deep`) overrides the
+  spec's font-reconciliation tier for this run (see
+  [Font reconciliation](#font-reconciliation)).
 - **`validate`** parses the spec and checks every referenced input
   (markdown files exist, PDFs open, page ranges are in bounds, image
   files decode) without producing any output. Exits non-zero on
@@ -135,6 +138,11 @@ defaults:
     # document's logical page label in their sidebar / page indicator)
     # always reflects front_matter / body styles — even when
     # `enabled: false`.
+
+fonts:                       # embedded-font reconciliation; see below
+  reconcile: dedupe          # off | dedupe | merge | deep
+  embed_standard_14: true    # false = drop embedded Helvetica/Times/Courier/…
+  external_tool: auto        # auto | qpdf | mutool | ghostscript | none
 
 vars:                        # see "Variables" below
   petitioner: "Jane Smith"
@@ -442,6 +450,52 @@ parse → validate → resolve paths →
   preserving aspect ratio. Pages already at the target size are kept
   in place (no overhead) — only oversized or undersized inputs pay
   the wrap cost.
+
+---
+
+## Font reconciliation
+
+Every section is rendered or embedded independently, so the same
+typeface can end up embedded many times — once per markdown section
+(each WeasyPrint render subsets in isolation) and once per embedded
+source PDF. On a large packet this duplication dominates file size.
+The `fonts:` block controls the post-assembly pass that coalesces it:
+
+```yaml
+fonts:
+  reconcile: dedupe          # off | dedupe | merge | deep
+  embed_standard_14: true    # false → unembed Helvetica/Times/Courier/Symbol/ZapfDingbats
+  external_tool: auto        # auto | qpdf | mutool | ghostscript | none
+```
+
+Tiers, in increasing strength:
+
+| `reconcile` | What it does | Safety |
+|---|---|---|
+| `off`     | Nothing. | — |
+| `dedupe`  | **Default.** Built-in, lossless, zero-dependency. Coalesces byte-identical embedded font programs (`/FontFile{,2,3}`) and their `/ToUnicode` / `/CIDSet` streams so identical data is stored once. Biggest win on packets that re-embed the same base fonts across many source PDFs. | Always lossless. |
+| `merge`   | `dedupe` **+** a lossless structural recompaction via `qpdf` (object streams + flate recompression), if installed. | Always lossless; verified. |
+| `deep`    | Additionally tries the most aggressive optimizer present (Ghostscript), which can fuse divergent subsets of the same family — the kind of fragmentation `dedupe` can't touch. | Verified; see below. |
+
+**The verification gate.** Any external pass (`merge`, `deep`) is
+accepted only if its output preserves the page count, every named
+destination, every internal GoTo link, the page labels, and the
+outline *and* is actually smaller. Otherwise it is discarded and the
+safe file is kept. This matters because the strongest optimizer,
+Ghostscript, silently flattens the `/Names/Dests` tree and every
+clickable link — so `deep` will try it, detect the damage, and fall
+back to the lossless `qpdf` pass rather than ship a broken document.
+External tools are optional; absent them, every tier degrades cleanly
+to built-in `dedupe`.
+
+`embed_standard_14: false` drops embedded programs for fonts named
+exactly a PDF standard-14 (so viewers use their built-ins), keeping
+widths/encoding so metrics are unchanged. It leaves CID fonts and
+custom families (e.g. Arial) alone. Off by default — it never changes
+rendering unless you ask.
+
+Override per-run with `--reconcile MODE`, e.g. a quick draft with
+`--reconcile off` and a final build with `--reconcile merge`.
 
 ---
 

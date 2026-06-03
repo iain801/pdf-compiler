@@ -15,8 +15,9 @@ from __future__ import annotations
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
 from pathlib import Path
+from typing import get_args
 
-from pdf_compiler.assemble import assemble
+from pdf_compiler.assemble import AssemblyResult, assemble
 from pdf_compiler.context import BuildContext
 from pdf_compiler.interpolate import interpolate
 from pdf_compiler.sections import impl_for
@@ -29,7 +30,7 @@ from pdf_compiler.sections.toc import (
     subtoc_header_compiled_section,
     toc_compiled_section,
 )
-from pdf_compiler.spec import HeaderSection, Spec, TocSection
+from pdf_compiler.spec import HeaderSection, ReconcileMode, Spec, TocSection
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,8 +42,18 @@ class LayoutPlan:
     total: int  # total document page count under this plan
 
 
-def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
-    """Run the full pipeline and write the final PDF. Returns total pages."""
+def run_pipeline(
+    spec: Spec, ctx: BuildContext, output: Path, *, reconcile: str | None = None
+) -> AssemblyResult:
+    """Run the full pipeline and write the final PDF.
+
+    ``reconcile`` (if given) overrides ``spec.fonts.reconcile`` — used by the
+    CLI ``--reconcile`` flag. Returns the :class:`AssemblyResult`.
+    """
+    if reconcile is not None and reconcile not in get_args(ReconcileMode):
+        valid = ", ".join(get_args(ReconcileMode))
+        raise ValueError(f"invalid reconcile mode {reconcile!r}; choose from: {valid}")
+
     work: list[tuple[int, object]] = []
     deferred_indices: list[int] = []
     for i, sec in enumerate(spec.sections):
@@ -99,13 +110,18 @@ def run_pipeline(spec: Spec, ctx: BuildContext, output: Path) -> int:
         deferred_compiled[i] if i in deferred_compiled else compiled_map[i]
         for i in range(len(spec.sections))
     ]
+    fonts = spec.fonts
+    if reconcile is not None:
+        # The CLI validates --reconcile against an Enum before it reaches here.
+        fonts = fonts.model_copy(update={"reconcile": reconcile})
     return assemble(
         final_sections,
         output,
         _interpolate_metadata(spec.metadata, ctx.vars),
         page_numbering=spec.defaults.page_numbering,
         margin=spec.defaults.margin,
-    ).page_count
+        fonts=fonts,
+    )
 
 
 def _interpolate_metadata(md, vars):

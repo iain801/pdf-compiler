@@ -18,8 +18,9 @@ import pikepdf
 
 from pdf_compiler.lengths import parse_length_pt
 from pdf_compiler.numbering import format_page_number
+from pdf_compiler.reconcile import ReconcileStats, reconcile_in_memory, run_external
 from pdf_compiler.sections.base import CompiledSection, OutlineNode
-from pdf_compiler.spec import Metadata, NumberingStyle, PageNumbering
+from pdf_compiler.spec import FontPolicy, Metadata, NumberingStyle, PageNumbering
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,6 +30,8 @@ class AssemblyResult:
     destinations: dict[str, int]
     # name -> 0-based global page index for ToC entries from all sections
     toc_destinations: dict[str, int]
+    # What the font-reconciliation pass did (None when no policy was given).
+    font_reconcile: ReconcileStats | None = None
 
 
 def assemble(
@@ -38,6 +41,7 @@ def assemble(
     *,
     page_numbering: PageNumbering | None = None,
     margin: str | None = None,
+    fonts: FontPolicy | None = None,
 ) -> AssemblyResult:
     if not sections:
         raise ValueError("no sections to assemble")
@@ -79,13 +83,24 @@ def assemble(
             margin_pt = parse_length_pt(margin) if margin else 54.0
             _stamp_page_numbers(combined, page_numbering, front_matter_pages, margin_pt)
 
+    reconcile_stats: ReconcileStats | None = None
+    if fonts is not None and fonts.reconcile != "off":
+        # Tier 1 runs in memory on the combined PDF before it ever hits disk.
+        reconcile_stats = reconcile_in_memory(combined, fonts)
+
     output_path.parent.mkdir(parents=True, exist_ok=True)
     combined.save(output_path, linearize=False)
     combined.close()
+
+    if reconcile_stats is not None and fonts is not None and fonts.reconcile in ("merge", "deep"):
+        # Tiers 2/3 operate on the saved file and are gated by a structure check.
+        reconcile_stats = run_external(output_path, fonts, reconcile_stats)
+
     return AssemblyResult(
         page_count=page_offset,
         destinations=global_dests,
         toc_destinations=toc_dests,
+        font_reconcile=reconcile_stats,
     )
 
 

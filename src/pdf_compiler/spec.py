@@ -29,6 +29,36 @@ NumberingPosition = Literal[
 ]
 CaptionPlacement = Literal["below", "above", "overlay", "none"]
 GalleryLayout = Literal["grid", "autopack"]
+# Font-reconciliation strength. ``off`` skips the pass entirely; ``dedupe``
+# coalesces byte-identical embedded font programs (lossless, built-in);
+# ``merge`` adds a lossless structural recompaction via an external tool
+# (qpdf) guarded by a verification gate; ``deep`` additionally tries the most
+# aggressive optimizer available (Ghostscript) — also gated, never allowed to
+# break links/destinations.
+ReconcileMode = Literal["off", "dedupe", "merge", "deep"]
+# Which external optimizer the ``merge`` / ``deep`` tiers may shell out to.
+# ``auto`` picks the best available for the tier; ``none`` forbids external
+# tools (so ``merge``/``deep`` degrade to the built-in ``dedupe``).
+ExternalTool = Literal["auto", "qpdf", "mutool", "ghostscript", "none"]
+
+
+class FontPolicy(_Strict):
+    """How embedded fonts are reconciled in the final assembled document.
+
+    Each section is rendered/embedded independently, so the same typeface can
+    end up embedded many times. This policy controls the post-assembly pass
+    that coalesces them. The pass is always *safe*: any external optimizer
+    output is verified to preserve the page count, named destinations, GoTo
+    links, page labels, and outline before it is accepted.
+    """
+
+    reconcile: ReconcileMode = "dedupe"
+    # When False, strip embedded font programs for fonts whose base name is one
+    # of the PDF standard-14 (Helvetica/Times/Courier/Symbol/ZapfDingbats),
+    # letting viewers substitute their built-ins. Default True = never change
+    # rendering. Only affects simple (non-CID) fonts named exactly a standard-14.
+    embed_standard_14: bool = True
+    external_tool: ExternalTool = "auto"
 
 
 class PageNumbering(_Strict):
@@ -178,6 +208,8 @@ class Spec(_Strict):
     output: Path = Path("out.pdf")
     metadata: Metadata = Field(default_factory=Metadata)
     defaults: Defaults = Field(default_factory=Defaults)
+    # Embedded-font reconciliation policy (see :class:`FontPolicy`).
+    fonts: FontPolicy = Field(default_factory=FontPolicy)
     # User-defined ``{{ name }}`` substitutions. Builtins (today, year, ...)
     # are always available; entries here override or extend them.
     vars: dict[str, str | int | float | bool | None] = Field(default_factory=dict)

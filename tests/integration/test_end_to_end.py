@@ -1,11 +1,35 @@
 from __future__ import annotations
 
+import shutil
 from pathlib import Path
 
 import pikepdf
 import pytest
 
 from pdf_compiler.pipeline import compile_spec, validate_spec
+
+
+def _structure(path: Path) -> tuple[int, int, int]:
+    """(pages, named-dest count, GoTo-link count) — the things reconciliation
+    must never destroy."""
+    with pikepdf.open(path) as pdf:
+        dests = 0
+        names = pdf.Root.get("/Names")
+        if names is not None and "/Dests" in names:
+            # Guard the flat-leaf access: an optimizer may rewrite /Dests into
+            # a /Kids tree, in which case /Names is absent (we just read 0 here
+            # rather than KeyError — production counting lives in _fingerprint).
+            arr = names["/Dests"].get("/Names")
+            if arr is not None:
+                dests = len(arr) // 2
+        links = 0
+        for page in pdf.pages:
+            for annot in page.get("/Annots", []) or []:
+                action = annot.get("/A")
+                if action is not None and action.get("/S") == pikepdf.Name.GoTo:
+                    links += 1
+        return len(pdf.pages), dests, links
+
 
 EXAMPLES = Path(__file__).resolve().parents[2] / "examples"
 
@@ -72,6 +96,60 @@ def test_internal_links_target_dests(report_pdf: Path):
                         broken.append(str(dest))
         # ToC link targets should resolve
         assert not broken, f"broken link destinations: {broken[:5]}"
+
+
+def test_default_reconcile_preserves_structure(report_pdf: Path):
+    """The default build runs Tier-1 dedupe; it must keep every dest/link.
+    (report_pdf is compiled with default spec.fonts → reconcile='dedupe'.)"""
+    pages, dests, links = _structure(report_pdf)
+    assert pages >= 5
+    assert dests >= 1
+    assert links >= 1
+
+
+@pytest.mark.parametrize("mode", ["off", "dedupe", "merge", "deep"])
+def test_reconcile_modes_never_break_structure(tmp_path, mode):
+    """Across every tier — including 'deep' (which may invoke Ghostscript,
+    known to flatten dests/links) — the verification gate guarantees the
+    written PDF preserves page count, destinations, and internal links."""
+    baseline = tmp_path / "baseline.pdf"
+    compile_spec(EXAMPLES / "report.yaml", out_path=baseline, jobs=1, reconcile="off")
+    base = _structure(baseline)
+
+    out = tmp_path / f"{mode}.pdf"
+    result = compile_spec(EXAMPLES / "report.yaml", out_path=out, jobs=1, reconcile=mode)
+    pages, dests, links = _structure(out)
+    assert pages == base[0]
+    assert dests >= base[1]
+    assert links >= base[2]
+    assert result.page_count == base[0]
+
+
+@pytest.mark.skipif(shutil.which("gs") is None, reason="ghostscript not installed")
+def test_deep_preserves_structure_even_with_ghostscript(tmp_path):
+    """`deep` may invoke Ghostscript, which flattens our /Names/Dests tree and
+    GoTo links. With gs installed the gs path is actually exercised; the
+    verification gate must guarantee the shipped PDF still has its
+    destinations and links — whether gs was rejected (the usual case) or
+    happened to produce a structurally-safe output."""
+    base = tmp_path / "off.pdf"
+    compile_spec(EXAMPLES / "report.yaml", out_path=base, jobs=1, reconcile="off")
+    _, base_dests, base_links = _structure(base)
+
+    out = tmp_path / "deep.pdf"
+    compile_spec(EXAMPLES / "report.yaml", out_path=out, jobs=1, reconcile="deep")
+    _, dests, links = _structure(out)
+    assert dests >= base_dests >= 1
+    assert links >= base_links >= 1
+
+
+def test_invalid_reconcile_mode_raises_cleanly(tmp_path):
+    """A bad reconcile value (e.g. from a library caller bypassing the CLI
+    Enum) is rejected with a clear ValueError, not a deep pydantic dump."""
+    with pytest.raises(ValueError, match="invalid reconcile mode"):
+        compile_spec(
+            EXAMPLES / "report.yaml", out_path=tmp_path / "x.pdf", jobs=1, reconcile="bogus"
+        )
 
 
 def test_cache_round_trip(tmp_path):

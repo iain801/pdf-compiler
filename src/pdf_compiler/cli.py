@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import enum
 import sys
 import traceback
 from pathlib import Path
@@ -10,6 +11,18 @@ import typer
 from rich.console import Console
 
 from pdf_compiler import __version__
+
+
+class ReconcileChoice(enum.StrEnum):
+    """CLI choices for ``--reconcile``; mirrors spec.ReconcileMode. Defining it
+    as an Enum lets Typer validate the value and list the choices in --help,
+    so a bad value yields a clean error instead of a deep pydantic traceback."""
+
+    off = "off"
+    dedupe = "dedupe"
+    merge = "merge"
+    deep = "deep"
+
 
 app = typer.Typer(
     name="pdfc",
@@ -53,12 +66,23 @@ def compile_cmd(
     ),
     jobs: int = typer.Option(0, "--jobs", "-j", help="Parallel workers (0 = auto)."),
     no_cache: bool = typer.Option(False, "--no-cache", help="Bypass the section cache."),
+    reconcile: ReconcileChoice | None = typer.Option(
+        None,
+        "--reconcile",
+        help="Font reconciliation: off | dedupe | merge | deep (overrides the spec).",
+    ),
 ) -> None:
     """Compile a YAML spec into a single PDF."""
     from pdf_compiler.pipeline import compile_spec
 
     try:
-        result = compile_spec(spec, out_path=out_path, jobs=jobs, use_cache=not no_cache)
+        result = compile_spec(
+            spec,
+            out_path=out_path,
+            jobs=jobs,
+            use_cache=not no_cache,
+            reconcile=reconcile.value if reconcile is not None else None,
+        )
     except Exception as e:  # noqa: BLE001
         # CLI boundary: any unhandled error from the pipeline becomes a
         # friendly one-line error plus a dimmed traceback for debugging.
@@ -68,6 +92,8 @@ def compile_cmd(
         err.print("[dim]" + traceback.format_exc() + "[/dim]")
         raise typer.Exit(code=1) from e
     out.print(f"[green]wrote[/green] {result.output_path} ({result.page_count} pages)")
+    if result.font_summary:
+        out.print(f"[dim]{result.font_summary}[/dim]")
 
 
 @app.command()

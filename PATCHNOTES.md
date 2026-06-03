@@ -6,6 +6,33 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 
 ## [Unreleased]
 
+### Added
+- **Font reconciliation (`fonts:` block + `--reconcile`).** A
+  post-assembly pass that shrinks the output by coalescing duplicate
+  embedded fonts, with three escalating tiers:
+  - `dedupe` (new default): built-in, lossless, zero-dependency —
+    coalesces byte-identical font-program streams
+    (`/FontFile{,2,3}`) and their `/ToUnicode` / `/CIDSet` streams so
+    identical data is stored once and referenced many times.
+  - `merge`: adds a lossless structural recompaction via `qpdf`.
+  - `deep`: additionally tries Ghostscript (can fuse divergent
+    subsets), behind a verification gate.
+
+  Every external pass is accepted only if the result preserves page
+  count, named destinations, GoTo links, page labels, and the
+  outline — *and* is smaller; otherwise it is discarded and the safe
+  file kept. (Ghostscript, the strongest optimizer, flattens our
+  `/Names/Dests` tree and every internal link; the gate catches this
+  and falls back to `qpdf`.) External tools are optional — every tier
+  degrades cleanly to built-in `dedupe` when they're absent.
+
+  `embed_standard_14: false` additionally unembeds standard-14 fonts
+  (Helvetica/Times/Courier/Symbol/ZapfDingbats), preserving
+  widths/encoding so metrics are unchanged; CID and custom families
+  are left alone. `external_tool` pins or forbids the helper binary.
+  `pdfc compile --reconcile {off,dedupe,merge,deep}` overrides the
+  spec per run, and the compile summary reports what the pass did.
+
 ## [0.5.1] — 2026-05-31
 
 ## [0.5.0] — 2026-05-30
