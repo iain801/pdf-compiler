@@ -143,6 +143,38 @@ def test_deep_preserves_structure_even_with_ghostscript(tmp_path):
     assert links >= base_links >= 1
 
 
+def test_max_ppi_preserves_structure(tmp_path):
+    """Downsampling images to a PPI ceiling must keep every page, destination,
+    and internal link — the gallery images are over the ceiling and get
+    resampled, but navigation is untouched."""
+    baseline = tmp_path / "baseline.pdf"
+    compile_spec(EXAMPLES / "report.yaml", out_path=baseline, jobs=1, reconcile="off")
+    base = _structure(baseline)
+
+    out = tmp_path / "downsampled.pdf"
+    result = compile_spec(
+        EXAMPLES / "report.yaml", out_path=out, jobs=1, reconcile="off", max_ppi=110
+    )
+    pages, dests, links = _structure(out)
+    assert (pages, dests, links) == base
+    assert result.page_count == base[0]
+    # The gallery's five images all render above 110 ppi, so they downsample.
+    assert result.image_summary is not None
+    assert "downsampled" in result.image_summary
+
+
+def test_no_max_ppi_leaves_images_untouched(report_pdf: Path):
+    """The default build sets no ceiling, so the image pass never runs and no
+    image summary is produced."""
+    result = compile_spec(EXAMPLES / "report.yaml", out_path=report_pdf, jobs=1)
+    assert result.image_summary is None
+
+
+def test_invalid_max_ppi_raises_cleanly(tmp_path):
+    with pytest.raises(ValueError, match="at least 18"):
+        compile_spec(EXAMPLES / "report.yaml", out_path=tmp_path / "x.pdf", jobs=1, max_ppi=5)
+
+
 def test_invalid_reconcile_mode_raises_cleanly(tmp_path):
     """A bad reconcile value (e.g. from a library caller bypassing the CLI
     Enum) is rejected with a clear ValueError, not a deep pydantic dump."""

@@ -71,6 +71,12 @@ def compile_cmd(
         "--reconcile",
         help="Font reconciliation: off | dedupe | merge | deep (overrides the spec).",
     ),
+    max_ppi: int | None = typer.Option(
+        None,
+        "--max-ppi",
+        min=18,
+        help="Downsample images above this pixels-per-inch ceiling (overrides the spec).",
+    ),
 ) -> None:
     """Compile a YAML spec into a single PDF."""
     from pdf_compiler.pipeline import compile_spec
@@ -82,6 +88,7 @@ def compile_cmd(
             jobs=jobs,
             use_cache=not no_cache,
             reconcile=reconcile.value if reconcile is not None else None,
+            max_ppi=max_ppi,
         )
     except Exception as e:  # noqa: BLE001
         # CLI boundary: any unhandled error from the pipeline becomes a
@@ -92,6 +99,8 @@ def compile_cmd(
         err.print("[dim]" + traceback.format_exc() + "[/dim]")
         raise typer.Exit(code=1) from e
     out.print(f"[green]wrote[/green] {result.output_path} ({result.page_count} pages)")
+    if result.image_summary:
+        out.print(f"[dim]{result.image_summary}[/dim]")
     if result.font_summary:
         out.print(f"[dim]{result.font_summary}[/dim]")
 
