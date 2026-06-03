@@ -80,7 +80,7 @@ markdown heading, and the rendered markdown body.
 ## CLI
 
 ```
-pdfc compile  SPEC [--out OUT] [-j N] [--no-cache] [--reconcile MODE]
+pdfc compile  SPEC [--out OUT] [-j N] [--no-cache] [--reconcile MODE] [--max-ppi N]
 pdfc validate SPEC
 pdfc watch    SPEC [--out OUT]
 pdfc cache    clear
@@ -93,6 +93,8 @@ pdfc --version
   `--reconcile MODE` (`off`/`dedupe`/`merge`/`deep`) overrides the
   spec's font-reconciliation tier for this run (see
   [Font reconciliation](#font-reconciliation)).
+  `--max-ppi N` caps embedded image resolution for this run, overriding
+  the spec (see [Image downsampling](#image-downsampling)).
 - **`validate`** parses the spec and checks every referenced input
   (markdown files exist, PDFs open, page ranges are in bounds, image
   files decode) without producing any output. Exits non-zero on
@@ -143,6 +145,12 @@ fonts:                       # embedded-font reconciliation; see below
   reconcile: dedupe          # off | dedupe | merge | deep
   embed_standard_14: true    # false = drop embedded Helvetica/Times/Courier/…
   external_tool: auto        # auto | qpdf | mutool | ghostscript | none
+
+images:                      # embedded-image downsampling; see below
+  max_ppi: null              # null = off; e.g. 150 caps resolution at 150 ppi
+  compression: auto          # auto | jpeg | flate
+  jpeg_quality: 82           # 1–100, for the lossy path
+  tolerance: 1.1             # only resample images >10% over the ceiling
 
 vars:                        # see "Variables" below
   petitioner: "Jane Smith"
@@ -499,11 +507,48 @@ Override per-run with `--reconcile MODE`, e.g. a quick draft with
 
 ---
 
+## Image downsampling
+
+A phone photo dropped into a gallery, or a 600-dpi page scan inside an
+embedded PDF, usually carries far more pixels than the page ever shows.
+The `images:` block caps the *effective* resolution: for every embedded
+image, pdfc walks the page content streams (recursing into form
+XObjects) to recover the matrix it's painted with, works out its largest
+on-page size, and — if that works out above `max_ppi` — resamples it
+down to the ceiling.
+
+```yaml
+images:
+  max_ppi: 150       # null = off (default). 150 ≈ print, 110 ≈ screen, 300 ≈ press
+  compression: auto  # auto | jpeg | flate
+  jpeg_quality: 82   # 1–100, for the lossy path
+  tolerance: 1.1     # only resample images >10% over the ceiling
+```
+
+The pass is **opt-in and lossy** — disabled unless `max_ppi` is set:
+
+- It targets each image's *largest* placement, so an image reused at
+  several sizes is never under-resolved at its biggest one.
+- `compression: auto` re-encodes opaque RGB / grayscale photos as JPEG
+  (smallest) and keeps everything else — palette, CMYK, 1-bit, or
+  masked images, where JPEG would corrupt them — lossless (Flate).
+  `jpeg` forces the lossy path where it's safe; `flate` forces lossless.
+- Soft-mask (alpha) planes are downsampled to match their base image,
+  always losslessly.
+- An image is only rewritten when the result is genuinely smaller;
+  images already at or below the ceiling are left byte-for-byte alone.
+- Stencil image-masks are skipped, and the pass never upscales.
+
+Override per-run with `--max-ppi N`, e.g. a final build with
+`--max-ppi 150` while drafts stay full-resolution.
+
+---
+
 ## Development
 
 ```bash
 uv sync                       # install deps + dev tools
-uv run pytest                 # ~180 tests; runs in ~5s
+uv run pytest                 # ~225 tests; runs in ~12s
 uv run pytest --cov           # with coverage
 uv run ruff check src tests   # lint
 uv run ruff format            # format

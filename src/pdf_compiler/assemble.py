@@ -16,11 +16,12 @@ from pathlib import Path
 
 import pikepdf
 
+from pdf_compiler.images import ImageStats, downsample_images
 from pdf_compiler.lengths import parse_length_pt
 from pdf_compiler.numbering import format_page_number
 from pdf_compiler.reconcile import ReconcileStats, reconcile_in_memory, run_external
 from pdf_compiler.sections.base import CompiledSection, OutlineNode
-from pdf_compiler.spec import FontPolicy, Metadata, NumberingStyle, PageNumbering
+from pdf_compiler.spec import FontPolicy, ImagePolicy, Metadata, NumberingStyle, PageNumbering
 
 
 @dataclass(frozen=True, slots=True)
@@ -32,6 +33,8 @@ class AssemblyResult:
     toc_destinations: dict[str, int]
     # What the font-reconciliation pass did (None when no policy was given).
     font_reconcile: ReconcileStats | None = None
+    # What the image-downsampling pass did (None when no policy was given).
+    image_downsample: ImageStats | None = None
 
 
 def assemble(
@@ -42,6 +45,7 @@ def assemble(
     page_numbering: PageNumbering | None = None,
     margin: str | None = None,
     fonts: FontPolicy | None = None,
+    images: ImagePolicy | None = None,
 ) -> AssemblyResult:
     if not sections:
         raise ValueError("no sections to assemble")
@@ -83,6 +87,12 @@ def assemble(
             margin_pt = parse_length_pt(margin) if margin else 54.0
             _stamp_page_numbers(combined, page_numbering, front_matter_pages, margin_pt)
 
+    image_stats: ImageStats | None = None
+    if images is not None and images.max_ppi is not None:
+        # Resample over-resolution images in memory, before fonts/save, so the
+        # reconcile and recompaction passes see the already-shrunken streams.
+        image_stats = downsample_images(combined, images)
+
     reconcile_stats: ReconcileStats | None = None
     if fonts is not None and fonts.reconcile != "off":
         # Tier 1 runs in memory on the combined PDF before it ever hits disk.
@@ -101,6 +111,7 @@ def assemble(
         destinations=global_dests,
         toc_destinations=toc_dests,
         font_reconcile=reconcile_stats,
+        image_downsample=image_stats,
     )
 
 

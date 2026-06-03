@@ -12,6 +12,8 @@ class CompileResult:
     page_count: int
     # Human-readable one-line summary of the font-reconciliation pass, if any.
     font_summary: str | None = None
+    # Human-readable one-line summary of the image-downsampling pass, if any.
+    image_summary: str | None = None
 
 
 def compile_spec(
@@ -21,6 +23,7 @@ def compile_spec(
     jobs: int = 0,
     use_cache: bool = True,
     reconcile: str | None = None,
+    max_ppi: int | None = None,
 ) -> CompileResult:
     from pdf_compiler.context import build_context
     from pdf_compiler.loader import load_spec
@@ -29,9 +32,15 @@ def compile_spec(
     spec = load_spec(spec_path)
     ctx = build_context(spec_path, spec, jobs=jobs, use_cache=use_cache)
     output = out_path or (spec_path.parent / spec.output)
-    result = run_pipeline(spec, ctx, output, reconcile=reconcile)
-    summary = result.font_reconcile.summary() if result.font_reconcile else None
-    return CompileResult(output_path=output, page_count=result.page_count, font_summary=summary)
+    result = run_pipeline(spec, ctx, output, reconcile=reconcile, max_ppi=max_ppi)
+    font_summary = result.font_reconcile.summary() if result.font_reconcile else None
+    image_summary = result.image_downsample.summary() if result.image_downsample else None
+    return CompileResult(
+        output_path=output,
+        page_count=result.page_count,
+        font_summary=font_summary,
+        image_summary=image_summary,
+    )
 
 
 def validate_spec(spec_path: Path) -> list[str]:

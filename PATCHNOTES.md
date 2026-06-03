@@ -7,6 +7,26 @@ All notable changes to `pdf-compiler` are recorded here. Format follows
 ## [Unreleased]
 
 ### Added
+- **Image downsampling (`images:` block + `--max-ppi`).** A
+  post-assembly pass that caps embedded raster resolution to a
+  pixels-per-inch ceiling. For each image it walks the page content
+  streams (recursing into form XObjects) to recover the matrix the
+  image is painted with, computes its effective resolution at its
+  *largest* placement, and resamples anything above the ceiling. The
+  pass is opt-in and lossy — off unless `images.max_ppi` is set:
+  - `compression: auto` (default) re-encodes opaque RGB/grayscale
+    photos as JPEG and keeps palette/CMYK/1-bit/masked images lossless
+    (Flate); `jpeg`/`flate` force a path. `jpeg_quality` (default 82)
+    tunes the lossy path; `tolerance` (default 1.1) skips images barely
+    over the ceiling.
+  - Soft-mask (alpha) planes are downsampled to match their base image,
+    always losslessly. Stencil image-masks are skipped, images are
+    never upscaled, and an image is rewritten only when the result is
+    genuinely smaller.
+
+  `pdfc compile --max-ppi N` overrides the spec per run, and the
+  compile summary reports how many images were resampled and the bytes
+  saved.
 - **Font reconciliation (`fonts:` block + `--reconcile`).** A
   post-assembly pass that shrinks the output by coalescing duplicate
   embedded fonts, with three escalating tiers:

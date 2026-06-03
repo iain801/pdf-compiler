@@ -40,6 +40,11 @@ ReconcileMode = Literal["off", "dedupe", "merge", "deep"]
 # ``auto`` picks the best available for the tier; ``none`` forbids external
 # tools (so ``merge``/``deep`` degrade to the built-in ``dedupe``).
 ExternalTool = Literal["auto", "qpdf", "mutool", "ghostscript", "none"]
+# How a downsampled image is re-encoded. ``auto`` = JPEG for opaque RGB /
+# grayscale photos (lossy, smallest) and lossless Flate for everything else
+# (palette, CMYK, 1-bit, or masked images, where JPEG would corrupt them).
+# ``jpeg`` forces the lossy path where it is safe; ``flate`` forces lossless.
+ImageCompression = Literal["auto", "jpeg", "flate"]
 
 
 class FontPolicy(_Strict):
@@ -59,6 +64,38 @@ class FontPolicy(_Strict):
     # rendering. Only affects simple (non-CID) fonts named exactly a standard-14.
     embed_standard_14: bool = True
     external_tool: ExternalTool = "auto"
+
+
+class ImagePolicy(_Strict):
+    """How embedded raster images are compressed in the final document.
+
+    Each section embeds images at whatever resolution it was given — a phone
+    photo dropped into an ``images`` gallery, or a 600-dpi page scan inside an
+    embedded PDF, can carry far more pixels than the page ever displays. This
+    policy caps the *effective* resolution: for every image we measure the
+    largest size it is actually drawn at (walking the page content streams,
+    including nested form XObjects, to recover its placement matrix) and, if
+    that works out above ``max_ppi``, resample it down to the ceiling.
+
+    The pass is opt-in and lossy: it is disabled unless ``max_ppi`` is set.
+    Images already at or below the ceiling are never touched, and a re-encoded
+    image is only kept when it is actually smaller than the original.
+    """
+
+    # Pixels-per-inch ceiling, measured at each image's largest placement.
+    # ``None`` (default) disables the pass entirely. ~150 is a good print
+    # ceiling, ~110 reads cleanly on screen, 300 is press-grade. The floor of
+    # 18 guards against pathologically tiny values that would destroy images.
+    max_ppi: int | None = Field(None, ge=18)
+    compression: ImageCompression = "auto"
+    # JPEG quality (1–100) for the lossy path. 82 keeps photos visually clean
+    # while still shrinking oversized scans substantially.
+    jpeg_quality: int = Field(82, ge=1, le=100)
+    # Only resample images whose effective resolution exceeds ``max_ppi`` by at
+    # least this factor — avoids re-encoding images barely over the ceiling,
+    # where the size win is negligible but the quality loss is real. 1.1 means
+    # "must be more than 10% over the ceiling".
+    tolerance: float = Field(1.1, ge=1.0, le=4.0)
 
 
 class PageNumbering(_Strict):
@@ -210,6 +247,9 @@ class Spec(_Strict):
     defaults: Defaults = Field(default_factory=Defaults)
     # Embedded-font reconciliation policy (see :class:`FontPolicy`).
     fonts: FontPolicy = Field(default_factory=FontPolicy)
+    # Embedded-image downsampling policy (see :class:`ImagePolicy`). Off by
+    # default — set ``images.max_ppi`` (or pass ``--max-ppi``) to enable.
+    images: ImagePolicy = Field(default_factory=ImagePolicy)
     # User-defined ``{{ name }}`` substitutions. Builtins (today, year, ...)
     # are always available; entries here override or extend them.
     vars: dict[str, str | int | float | bool | None] = Field(default_factory=dict)

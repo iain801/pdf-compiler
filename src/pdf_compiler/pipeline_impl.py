@@ -43,16 +43,24 @@ class LayoutPlan:
 
 
 def run_pipeline(
-    spec: Spec, ctx: BuildContext, output: Path, *, reconcile: str | None = None
+    spec: Spec,
+    ctx: BuildContext,
+    output: Path,
+    *,
+    reconcile: str | None = None,
+    max_ppi: int | None = None,
 ) -> AssemblyResult:
     """Run the full pipeline and write the final PDF.
 
-    ``reconcile`` (if given) overrides ``spec.fonts.reconcile`` — used by the
-    CLI ``--reconcile`` flag. Returns the :class:`AssemblyResult`.
+    ``reconcile`` (if given) overrides ``spec.fonts.reconcile`` and ``max_ppi``
+    overrides ``spec.images.max_ppi`` — used by the CLI ``--reconcile`` and
+    ``--max-ppi`` flags. Returns the :class:`AssemblyResult`.
     """
     if reconcile is not None and reconcile not in get_args(ReconcileMode):
         valid = ", ".join(get_args(ReconcileMode))
         raise ValueError(f"invalid reconcile mode {reconcile!r}; choose from: {valid}")
+    if max_ppi is not None and max_ppi < 18:
+        raise ValueError(f"invalid --max-ppi {max_ppi}; must be at least 18")
 
     work: list[tuple[int, object]] = []
     deferred_indices: list[int] = []
@@ -114,6 +122,10 @@ def run_pipeline(
     if reconcile is not None:
         # The CLI validates --reconcile against an Enum before it reaches here.
         fonts = fonts.model_copy(update={"reconcile": reconcile})
+    images = spec.images
+    if max_ppi is not None:
+        # Range-checked above; model_copy skips validation so the guard matters.
+        images = images.model_copy(update={"max_ppi": max_ppi})
     return assemble(
         final_sections,
         output,
@@ -121,6 +133,7 @@ def run_pipeline(
         page_numbering=spec.defaults.page_numbering,
         margin=spec.defaults.margin,
         fonts=fonts,
+        images=images,
     )
 
 
